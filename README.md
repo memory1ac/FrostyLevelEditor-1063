@@ -14,7 +14,7 @@ License: [MIT](LICENSE)
 
 ### 说明
 
-- 本插件面向 **Frosty Editor 1.0.6.3**（兼容版），不是 Frosty 编辑器本体。
+- 本插件面向 **Frosty Editor 1.0.6.3** 。
 - 用于在编辑器里打开 `LevelData`、`SubWorldData`、`SpatialPrefabBlueprint`、`ObjectBlueprint` 等资源，查看和编辑关卡。
 - **部分代码由 AI 完成。**
 - 本仓库按 MIT 许可公开。若你有修改需求，请 **Fork** 一份自行修改，不必依赖本仓库接受所有改动。
@@ -44,7 +44,7 @@ License: [MIT](LICENSE)
 
 ### About
 
-- This plugin is built for **Frosty Editor 1.0.6.3**. It is not the Frosty editor itself.
+- This plugin is built for **Frosty Editor 1.0.6.3**.
 - It opens Battlefield 1 `LevelData`, `SubWorldData`, `SpatialPrefabBlueprint`, `ObjectBlueprint`, and related assets in a level editor view.
 - **Some of this code was written with AI assistance.**
 - The project is released under the MIT License. If you need changes, **fork this repository and modify your own copy**.
