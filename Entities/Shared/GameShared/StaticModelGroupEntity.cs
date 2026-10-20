@@ -1,0 +1,386 @@
+using Frosty.Core;
+using Frosty.Core.Managers;
+using Frosty.Core.Viewport;
+using FrostySdk.Ebx;
+using FrostySdk.IO;
+using LevelEditorPlugin.Data;
+using LevelEditorPlugin.Editors;
+using LevelEditorPlugin.Managers;
+using LevelEditorPlugin.Render.Proxies;
+using SharpDX;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using MeshVariationDatabase = LevelEditorPlugin.Assets.MeshVariationDatabase;
+
+namespace LevelEditorPlugin.Entities;
+
+public class StaticModelGroupElementMoveEntityUndoUnit : IUndoUnit
+{
+    public string Text => "Move Entities";
+
+    private StaticModelGroupElementEntity entity;
+    private Matrix originalTransform;
+
+    public StaticModelGroupElementMoveEntityUndoUnit(StaticModelGroupElementEntity inEntity, Matrix inOriginalTransform)
+    {
+        entity = inEntity;
+        originalTransform = inOriginalTransform;
+    }
+
+    public void Do()
+    {
+        (entity.Parent as StaticModelGroupEntity).UpdateData(entity);
+    }
+
+    public void Undo()
+    {
+        (entity.Parent as StaticModelGroupEntity).UndoData(entity, originalTransform);
+        (entity as ISpatialEntity).SetTransform(originalTransform, suppressUpdate: true);
+        entity.RequiresTransformUpdate = true;
+    }
+}
+
+[EntityBinding(DataType = typeof(StaticModelGroupElementEntityData))]
+public class StaticModelGroupElementEntity : Entity, IEntityData<StaticModelGroupElementEntityData>, ISpatialEntity
+{
+    public StaticModelGroupElementEntityData Data => data as StaticModelGroupElementEntityData;
+    public override bool RequiresTransformUpdate
+    {
+        get => base.RequiresTransformUpdate;
+        set
+        {
+            entity.RequiresTransformUpdate = value;
+        }
+    }
+    public override string DisplayName => Path.GetFileName(blueprint.Name);
+
+    private Assets.ObjectBlueprint blueprint;
+    private Entity entity;
+
+    public StaticModelGroupElementEntity(StaticModelGroupElementEntityData inData, Entity inParent)
+        : base(inData, inParent)
+    {
+        blueprint = LoadedAssetManager.Instance.LoadAsset<Assets.ObjectBlueprint>(new FrostySdk.IO.EbxImportReference() { FileGuid = Data.InternalBlueprint.External.FileGuid, ClassGuid = Guid.Empty });
+        entity = CreateEntity(blueprint.Data.Object.GetObjectAs<FrostySdk.Ebx.GameObjectData>());
+
+        // For visibility in the property grid, will show the actual blueprint as opposed to the entity data
+        Data.Blueprint = new FrostySdk.Ebx.PointerRef(new EbxImportReference() { FileGuid = blueprint.FileGuid, ClassGuid = blueprint.InstanceGuid });
+    }
+
+    public virtual Matrix GetTransform()
+    {
+        Matrix m = Matrix.Identity;
+        if (parent != null && parent is ISpatialEntity)
+            m = (parent as ISpatialEntity).GetTransform();
+        return SharpDXUtils.FromLinearTransform(Data.Transform) * m;
+    }
+
+    public Matrix GetLocalTransform()
+    {
+        return SharpDXUtils.FromLinearTransform(Data.Transform);
+    }
+
+    public void SetTransform(Matrix m, bool suppressUpdate)
+    {
+        if (suppressUpdate)
+        {
+            if (!UndoManager.Instance.IsUndoing && UndoManager.Instance.PendingUndoUnit == null)
+            {
+                UndoManager.Instance.PendingUndoUnit = new StaticModelGroupElementMoveEntityUndoUnit(this, GetLocalTransform());
+            }
+        }
+        else
+        {
+            UndoManager.Instance.CommitUndo(UndoManager.Instance.PendingUndoUnit);
+        }
+
+        Data.Transform = MakeLinearTransform(m);
+        NotifyEntityModified("Transform");
+
+        // 同步更新 Havok 内存数据（文本框中修改时也会更新）
+        if (Parent is StaticModelGroupEntity staticModelGroup && Data.IsHavok)
+        {
+            staticModelGroup.UpdateData(this);
+        }
+    }
+
+    public override void CreateRenderProxy(List<RenderProxy> proxies, RenderCreateState state)
+    {
+        entity.CreateRenderProxy(proxies, state);
+    }
+
+    public override void SetOwner(Entity newOwner)
+    {
+        base.SetOwner(newOwner);
+        entity.SetOwner(newOwner);
+    }
+
+    public override void SetVisibility(bool newVisibility)
+    {
+        if (newVisibility != isVisible)
+        {
+            isVisible = newVisibility;
+            entity.SetVisibility(newVisibility);
+        }
+    }
+
+    public override void Destroy()
+    {
+        LoadedAssetManager.Instance.UnloadAsset(blueprint);
+        entity.Destroy();
+    }
+}
+
+[EntityBinding(DataType = typeof(FrostySdk.Ebx.StaticModelGroupEntityData))]
+public class StaticModelGroupEntity : Entity, IEntityData<FrostySdk.Ebx.StaticModelGroupEntityData>, ISpatialReferenceEntity, ILayerEntity
+{
+    public FrostySdk.Ebx.StaticModelGroupEntityData Data => data as FrostySdk.Ebx.StaticModelGroupEntityData;
+
+    private Resources.HavokPhysicsData physicsData;
+    private List<Entity> entities = [];
+
+    public StaticModelGroupEntity(FrostySdk.Ebx.StaticModelGroupEntityData inData, Entity inParent)
+        : base(inData, inParent)
+    {
+        physicsData = GetPhysicsData(inData);
+
+        int instCount = 0;
+        int totalInstCount = 0;
+
+        if (inData.MemberDatas == null)
+            return;
+
+        foreach (StaticModelGroupMemberData member in inData.MemberDatas)
+        {
+            if (member == null)
+                continue;
+
+            for (int i = 0; i < member.InstanceCount; i++)
+            {
+                var entityData = new StaticModelGroupElementEntityData
+                {
+                    InternalBlueprint = member.MemberType
+                };
+
+                if ((member.InstanceTransforms != null && member.InstanceTransforms.Count > 0) || physicsData != null)
+                {
+                    if (member.InstanceTransforms != null && member.InstanceTransforms.Count > 0)
+                    {
+                        entityData.Transform = member.InstanceTransforms[i];
+                        entityData.Index = totalInstCount;
+                        entityData.HavokShapeType = "None";
+                    }
+                    else if (physicsData != null)
+                    {
+                        uint index = (uint)(member.PhysicsPartRange.First + i);
+
+                        entityData.Transform = MakeLinearTransform(physicsData.GetTransform(instCount++));
+                        entityData.Index = instCount - 1;
+                        entityData.IsHavok = true;
+                        entityData.HavokShapeType = physicsData.GetPhysicsShapeType(instCount - 1);
+                    }
+
+                    if (member.InstanceObjectVariation != null && i < member.InstanceObjectVariation.Count)
+                    {
+                        Entity currentLayer = Parent;
+                        entityData.ObjectVariationHash = member.InstanceObjectVariation[i];
+
+                        if (entityData.ObjectVariationHash != 0 && currentLayer != null)
+                        {
+                            while (currentLayer != null && !(currentLayer is SubWorldReferenceObject))
+                                currentLayer = currentLayer.Parent;
+
+                            if (currentLayer != null && currentLayer is SubWorldReferenceObject)
+                            {
+                                MeshVariationDatabase meshVariatationDb = (currentLayer as SubWorldReferenceObject).MeshVariationDatabase;
+                                if (meshVariatationDb != null)
+                                {
+                                    entityData.ObjectVariation = meshVariatationDb.GetVariation(entityData.ObjectVariationHash);
+                                }
+                            }
+                        }
+                    }
+
+                    if (member.InstanceRenderingOverrides != null && i < member.InstanceRenderingOverrides.Count)
+                        entityData.RenderingOverrides = member.InstanceRenderingOverrides[i];
+                    if (member.InstanceRadiosityTypeOverride != null && i < member.InstanceRadiosityTypeOverride.Count)
+                        entityData.RadiosityTypeOverride = member.InstanceRadiosityTypeOverride[i];
+                    if (member.InstanceTerrainShaderNodesEnable != null && i < member.InstanceTerrainShaderNodesEnable.Count)
+                        entityData.TerrainShaderNodesEnable = member.InstanceTerrainShaderNodesEnable[i];
+
+                    totalInstCount++;
+                }
+
+                var createdEntity = CreateEntity(entityData);
+                if (createdEntity != null)
+                {
+                    entities.Add(createdEntity);
+                }
+            }
+        }
+    }
+
+    public virtual Matrix GetTransform()
+    {
+        Matrix m = Matrix.Identity;
+        if (parent != null && parent is ISpatialEntity)
+            m = (parent as ISpatialEntity).GetTransform();
+        return m;
+    }
+
+    public Matrix GetLocalTransform()
+    {
+        return Matrix.Identity;
+    }
+
+    public void SetTransform(Matrix m, bool suppressUpdate)
+    {
+        // do nothing
+    }
+
+    public void UpdateData(StaticModelGroupElementEntity entity)
+    {
+        if (entity.Data.IsHavok && physicsData != null)
+        {
+            // 仅更新内存，不立即写回 res，由 MeshView 中的按钮触发写回
+            physicsData.SetTransformInMemory(entity.Data.Index, entity.GetLocalTransform());
+        }
+        else
+        {
+            int instanceIndex = 0;
+            bool ebxNeedsUpdating = false;
+
+            foreach (StaticModelGroupMemberData member in Data.MemberDatas)
+            {
+                for (int i = 0; i < member.InstanceCount; i++)
+                {
+                    if (member.InstanceTransforms.Count > 0)
+                    {
+                        if (member.InstanceTransforms.Count > 0)
+                        {
+                            if (instanceIndex == entity.Data.Index)
+                            {
+                                member.InstanceTransforms[i] = MakeLinearTransform(entity.GetLocalTransform());
+                                ebxNeedsUpdating = true;
+                            }
+                        }
+                    }
+
+                    instanceIndex++;
+                }
+            }
+
+            if (ebxNeedsUpdating)
+            {
+                LoadedAssetManager.Instance.UpdateAsset((Owner.Parent as ReferenceObject).Blueprint);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 恢复 entity 的 transform 到 originalTransform（用于 Undo）。仅更新内存，不写回 res。
+    /// </summary>
+    public void UndoData(StaticModelGroupElementEntity entity, Matrix originalTransform)
+    {
+        if (entity.Data.IsHavok && physicsData != null)
+        {
+            physicsData.SetTransformInMemoryForUndo(entity.Data.Index, originalTransform);
+        }
+        else
+        {
+            int instanceIndex = 0;
+            bool ebxNeedsUpdating = false;
+
+            foreach (StaticModelGroupMemberData member in Data.MemberDatas)
+            {
+                for (int i = 0; i < member.InstanceCount; i++)
+                {
+                    if (member.InstanceTransforms.Count > 0)
+                    {
+                        if (member.InstanceTransforms.Count > 0)
+                        {
+                            if (instanceIndex == entity.Data.Index)
+                            {
+                                member.InstanceTransforms[i] = MakeLinearTransform(originalTransform);
+                                ebxNeedsUpdating = true;
+                            }
+                        }
+                    }
+
+                    instanceIndex++;
+                }
+            }
+
+            if (ebxNeedsUpdating)
+            {
+                LoadedAssetManager.Instance.UndoUpdate((Owner.Parent as ReferenceObject).Blueprint);
+            }
+        }
+    }
+
+    public Layers.SceneLayer GetLayer()
+    {
+        Layers.SceneLayer layer = new Layers.SceneLayer(this, "static_instances", new SharpDX.Color4(0.0f, 0.0f, 0.5f, 1.0f));
+        foreach (Entity entity in entities)
+        {
+            layer.AddEntity(entity);
+            entity.SetOwner(entity);
+        }
+
+        return layer;
+    }
+
+    public override void SetOwner(Entity newOwner)
+    {
+        base.SetOwner(newOwner);
+        foreach (Entity entity in entities)
+            entity.SetOwner(newOwner);
+    }
+
+    public override void SetVisibility(bool newVisibility)
+    {
+        if (newVisibility != isVisible)
+        {
+            isVisible = newVisibility;
+            foreach (Entity entity in entities)
+                entity.SetVisibility(newVisibility);
+        }
+    }
+
+    public override void CreateRenderProxy(List<RenderProxy> proxies, RenderCreateState state)
+    {
+        foreach (Entity entity in entities)
+            entity.CreateRenderProxy(proxies, state);
+    }
+
+    public override void Destroy()
+    {
+        foreach (Entity entity in entities)
+            entity.Destroy();
+    }
+
+    private Resources.HavokPhysicsData GetPhysicsData(FrostySdk.Ebx.StaticModelGroupEntityData inData)
+    {
+        foreach (PointerRef component in inData.Components)
+        {
+            FrostySdk.Ebx.GameObjectData gameObjectData = component.GetObjectAs<FrostySdk.Ebx.GameObjectData>();
+            if (gameObjectData is FrostySdk.Ebx.StaticModelGroupPhysicsComponentData)
+            {
+                FrostySdk.Ebx.StaticModelGroupPhysicsComponentData physicsComponentData = (FrostySdk.Ebx.StaticModelGroupPhysicsComponentData)gameObjectData;
+                foreach (PointerRef body in physicsComponentData.PhysicsBodies)
+                {
+                    FrostySdk.Ebx.GroupRigidBodyData bodyData = body.GetObjectAs<FrostySdk.Ebx.GroupRigidBodyData>();
+                    FrostySdk.Ebx.GroupHavokAsset havokAsset = bodyData.Asset.GetObjectAs<FrostySdk.Ebx.GroupHavokAsset>();
+
+                    if (havokAsset != null)
+                    {
+                        return App.AssetManager.GetResAs<Resources.HavokPhysicsData>(App.AssetManager.GetResEntry(havokAsset.Resource));
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+}

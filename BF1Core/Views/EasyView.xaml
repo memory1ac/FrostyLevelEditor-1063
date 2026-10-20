@@ -1,0 +1,50 @@
+<UserControl
+    x:Class="LevelEditorPlugin.BF1Core.Views.EasyView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:LevelEditorPlugin.BF1Core.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="{DynamicResource UserControl_DesignHeight}"
+    d:DesignWidth="{DynamicResource UserControl_DesignWidth}"
+    Background="{DynamicResource UserControl_Background}"
+    Foreground="{DynamicResource UserControl_Foreground}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary Source="/LevelEditorPlugin;component/BF1Core/Themes/Generic.xaml" />
+    </UserControl.Resources>
+
+    <StackPanel>
+        <GroupBox Header="快捷跳转">
+            <WrapPanel>
+                <Button
+                    x:Name="Button_OpenPath_CartWoodLong"
+                    Click="Button_OpenPath_CartWoodLong_Click"
+                    Content="定位到手推车路径" />
+                <Button
+                    x:Name="Button_OpenPath_MpAmiensContentSubLevel02A"
+                    Click="Button_OpenPath_MpAmiensContentSubLevel02A_Click"
+                    Content="定位到亚眠SubLevel02A" />
+                <Button
+                    x:Name="Button_OpenPath_MpRidge"
+                    Click="Button_OpenPath_MpRidge_Click"
+                    Content="定位到阿奇巴巴路径" />
+                <Button
+                    x:Name="Button_OpenPath_MpAmiensConquestSmall0"
+                    Click="Button_OpenPath_MpAmiensConquestSmall0_Click"
+                    Content="定位到亚眠小征服路径" />
+            </WrapPanel>
+        </GroupBox>
+
+        <GroupBox Header="常用功能">
+            <WrapPanel>
+                <Button
+                    x:Name="Button_SetPlayerUnlimitedAmmo"
+                    Click="Button_SetPlayerUnlimitedAmmo_Click"
+                    Content="设置玩家无限弹药" />
+            </WrapPanel>
+        </GroupBox>
+    </StackPanel>
+
+</UserControl>

@@ -1,0 +1,37 @@
+<shader profile="*">
+	<permutations>
+		<permutation skinned="true" bonesPerVertex="8">
+			<vertexshader>
+				<vertexlayout>
+					<layoutelement usage="Pos" format="Float3"/>
+					<layoutelement usage="Normal" format="Float4"/>
+					<layoutelement usage="Tangent" format="Float4"/>
+					<layoutelement usage="Binormal" format="Float4"/>
+					<layoutelement usage="TexCoord0" format="Float2"/>
+					<layoutelement usage="TexCoord1" format="Float2"/>
+					<layoutelement usage="TexCoord2" format="Float2"/>
+					<layoutelement usage="Color0" format="Float4"/>
+					<layoutelement usage="Color1" format="Float4"/>
+					<layoutelement usage="BoneIndices" format="UInt4"/>
+					<layoutelement usage="BoneIndices2" format="UInt4"/>
+					<layoutelement usage="BoneWeights" format="Float4"/>
+					<layoutelement usage="BoneWeights2" format="Float4"/>
+					<layoutelement usage="TangentSpace" format="UInt"/>
+				</vertexlayout>
+			</vertexshader>
+			<pixelshader twoSided="true">
+				<parameters>
+					<parameter name="WorldPosToVirtualTextureUVs0" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="WorldPosToVirtualTextureUVs1" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="WorldPosToVirtualTextureUVs2" type="Float4" defaultValue="0,0,0,0"/>
+				</parameters>
+				<textures>
+					<texture name="VirtualTextureAtlas" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+				</textures>
+				<samplers>
+					<sampler addressU="Clamp" addressV="Clamp" addressW="Clamp" filter="MinMagMipLinear"/>
+				</samplers>
+			</pixelshader>
+		</permutation>
+	</permutations>
+</shader>

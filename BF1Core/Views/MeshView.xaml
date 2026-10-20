@@ -1,0 +1,445 @@
+<UserControl
+    x:Class="LevelEditorPlugin.BF1Core.Views.MeshView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:LevelEditorPlugin.BF1Core.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="{DynamicResource UserControl_DesignHeight}"
+    d:DesignWidth="{DynamicResource UserControl_DesignWidth}"
+    Background="{DynamicResource UserControl_Background}"
+    Foreground="{DynamicResource UserControl_Foreground}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary Source="/LevelEditorPlugin;component/BF1Core/Themes/Generic.xaml" />
+    </UserControl.Resources>
+
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto"
+        Padding="0,0,4,0">
+        <StackPanel>
+
+        <GroupBox Header="选中信息">
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="Enity名称：" />
+                    <TextBlock
+                        x:Name="TextBlock_EntityName"
+                        Margin="3"
+                        Text="Entity Name" />
+                </DockPanel>
+                <DockPanel>
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="Layer名称：" />
+                    <TextBlock
+                        x:Name="TextBlock_LayerName"
+                        Margin="3"
+                        Text="Layer Name" />
+                </DockPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Transform信息">
+            <StackPanel>
+                <!--  位置 Translation  -->
+                <DockPanel>
+                    <TextBlock
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="位置" />
+                    <UniformGrid Columns="3">
+                        <TextBox
+                            x:Name="TextBox_TransX"
+                            Uid="X"
+                            d:Text="1.23"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_TransY"
+                            Uid="Y"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#208020"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_TransZ"
+                            Uid="Z"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#005080"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                    </UniformGrid>
+                </DockPanel>
+                <!--  旋转 Rotation  -->
+                <DockPanel>
+                    <TextBlock
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="旋转" />
+                    <UniformGrid Columns="3">
+                        <TextBox
+                            x:Name="TextBox_RotateX"
+                            Uid="X"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_RotateY"
+                            Uid="Y"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#208020"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_RotateZ"
+                            Uid="Z"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#005080"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                    </UniformGrid>
+                </DockPanel>
+                <!--  缩放 Scale  -->
+                <DockPanel>
+                    <TextBlock
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="缩放" />
+                    <UniformGrid Columns="3">
+                        <TextBox
+                            x:Name="TextBox_ScaleX"
+                            Uid="X"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_ScaleY"
+                            Uid="Y"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#208020"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                        <TextBox
+                            x:Name="TextBox_ScaleZ"
+                            Uid="Z"
+                            MouseWheel="TextBox_Transform_MouseWheel"
+                            SelectionBrush="#005080"
+                            TextChanged="TextBox_Transform_TextChanged" />
+                    </UniformGrid>
+                </DockPanel>
+
+                <WrapPanel>
+                    <Button
+                        x:Name="Button_ResetRotate"
+                        Click="Button_ResetRotate_Click"
+                        Content="重置旋转" />
+                    <Button
+                        x:Name="Button_ResetScale"
+                        Click="Button_ResetScale_Click"
+                        Content="重置缩放" />
+                    <CheckBox
+                        x:Name="CheckBox_UniformScale"
+                        Content="等比缩放"
+                        IsChecked="True" />
+                </WrapPanel>
+
+                <Separator />
+
+                <!--  坐标操作  -->
+                <WrapPanel>
+                    <Button
+                        x:Name="Button_SnapToCam"
+                        Click="Button_SnapToCam_Click"
+                        Content="移动模型到相机 (F1)" />
+                    <!--  //////////  -->
+                    <Border
+                        Width="1"
+                        Margin="5"
+                        Background="#5C5A58" />
+                    <Button
+                        x:Name="Button_CopyMeshToCamera"
+                        Click="Button_CopyMeshToCamera_Click"
+                        Content="复制模型到相机 (F5)"
+                        Foreground="#FEDB1D" />
+                </WrapPanel>
+
+                <Separator />
+
+                <WrapPanel>
+                    <Button
+                        x:Name="Button_DeleteSelectedEntity"
+                        Click="Button_DeleteSelectedEntity_Click"
+                        Content="删除选中实体 (高级)"
+                        Foreground="OrangeRed" />
+                    <!--  //////////  -->
+                    <Border
+                        Width="1"
+                        Margin="5"
+                        Background="#5C5A58" />
+                    <Button
+                        Name="Button_FixOBBCollisionScale"
+                        Click="Button_FixOBBCollisionScale_Click"
+                        Content="修复选中OBBCollision缩放" />
+                    <!--  //////////  -->
+                    <Border
+                        Width="1"
+                        Margin="5"
+                        Background="#5C5A58" />
+                    <Button
+                        x:Name="Button_WriteHavokTransformsToRes"
+                        Click="Button_WriteHavokTransformsToRes_Click"
+                        Content="写回 Havok Transform 到 Res"
+                        ToolTip="将 StaticModelGroup 修改过的 transform 通过 ModifyRes 写回 Havok 物理资源" />
+                </WrapPanel>
+
+                <Separator />
+
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="120"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="超平坦世界高度(Y):" />
+                    <TextBox
+                        x:Name="TextBox_FlattenTerrainHeight"
+                        Width="60"
+                        Margin="5,0,0,0"
+                        VerticalAlignment="Center"
+                        Text="0"
+                        ToolTip="输入世界坐标高度 Y。按游戏公式 sample/65535 * worldSizeY 写回，并用完整地形矩阵换算局部高度。" />
+                </DockPanel>
+                <WrapPanel>
+                    <Button
+                        x:Name="Button_FlattenTerrain"
+                        Click="Button_FlattenTerrain_Click"
+                        Content="一键超平坦地形"
+                        ToolTip="修改地形高度二进制数据并写回 Res 与 Chunk，不刷新视口，请手动重新打开地图查看" />
+                </WrapPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="地形编辑">
+            <StackPanel>
+                <DockPanel Margin="3">
+                    <CheckBox
+                        x:Name="CheckBox_TerrainEditMode"
+                        VerticalAlignment="Center"
+                        Content="启用地形笔刷"
+                        ToolTip="开启后按住左键在地形上涂抹，抬高或压低半径内的高度。"
+                        Click="CheckBox_TerrainEditMode_Click" />
+                </DockPanel>
+
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="笔刷模式" />
+                    <RadioButton
+                        x:Name="Radio_BrushRaise"
+                        Margin="5,0,8,0"
+                        VerticalAlignment="Center"
+                        Checked="Radio_BrushMode_Checked"
+                        Content="抬高"
+                        GroupName="TerrainBrushMode"
+                        IsChecked="True" />
+                    <RadioButton
+                        x:Name="Radio_BrushLower"
+                        VerticalAlignment="Center"
+                        Checked="Radio_BrushMode_Checked"
+                        Content="压低"
+                        GroupName="TerrainBrushMode" />
+                </DockPanel>
+
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="半径" />
+                    <TextBlock
+                        x:Name="TextBlock_BrushRadius"
+                        Width="40"
+                        VerticalAlignment="Center"
+                        Text="16" />
+                    <Slider
+                        x:Name="Slider_BrushRadius"
+                        Margin="5,0,0,0"
+                        Maximum="128"
+                        Minimum="1"
+                        SmallChange="1"
+                        TickFrequency="1"
+                        Value="16"
+                        ValueChanged="Slider_BrushRadius_ValueChanged" />
+                </DockPanel>
+
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="强度" />
+                    <TextBlock
+                        x:Name="TextBlock_BrushStrength"
+                        Width="40"
+                        VerticalAlignment="Center"
+                        Text="8" />
+                    <Slider
+                        x:Name="Slider_BrushStrength"
+                        Margin="5,0,0,0"
+                        Maximum="50"
+                        Minimum="0.1"
+                        SmallChange="0.1"
+                        Value="8"
+                        ValueChanged="Slider_BrushStrength_ValueChanged" />
+                </DockPanel>
+
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="羽化" />
+                    <TextBlock
+                        x:Name="TextBlock_BrushFeather"
+                        Width="40"
+                        VerticalAlignment="Center"
+                        Text="0.50" />
+                    <Slider
+                        x:Name="Slider_BrushFeather"
+                        Margin="5,0,0,0"
+                        Maximum="1"
+                        Minimum="0"
+                        SmallChange="0.05"
+                        Value="0.5"
+                        ValueChanged="Slider_BrushFeather_ValueChanged" />
+                </DockPanel>
+
+                <WrapPanel>
+                    <Button
+                        x:Name="Button_CommitTerrainHeights"
+                        Click="Button_CommitTerrainHeights_Click"
+                        Content="写入地形到 Res/Chunk"
+                        ToolTip="把本次涂抹的高度按游戏解码公式写入 Res/Chunk，并更新包围盒与 min/max 栈。" />
+                </WrapPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="复制面板">
+            <StackPanel>
+                <DockPanel Margin="5">
+                    <TextBlock
+                        Width="55"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="复制数量" />
+                    <Slider
+                        x:Name="Slider_CopyCount"
+                        Margin="5,0,5,0"
+                        DockPanel.Dock="Left"
+                        Maximum="50"
+                        Minimum="1"
+                        MouseWheel="Slider_Count_MouseWheel"
+                        SmallChange="1"
+                        TickFrequency="1"
+                        Value="1" />
+                </DockPanel>
+
+                <DockPanel Margin="5">
+                    <TextBlock
+                        Width="55"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="复制间距" />
+                    <Slider
+                        x:Name="Slider_CopyStep"
+                        Margin="5,0,5,0"
+                        DockPanel.Dock="Left"
+                        Maximum="50"
+                        Minimum="1"
+                        MouseWheel="Slider_Count_MouseWheel"
+                        SmallChange="1"
+                        TickFrequency="1"
+                        Value="1" />
+                </DockPanel>
+
+                <DockPanel Margin="5">
+                    <TextBlock
+                        Width="55"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="复制方向" />
+                    <UniformGrid x:Name="UniformGrid_CopyDirection" Columns="3">
+                        <RadioButton
+                            x:Name="RadioButton_XAxisAdd"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="X轴-正方向"
+                            Foreground="#802020"
+                            GroupName="CopyDirection" />
+                        <RadioButton
+                            x:Name="RadioButton_YAxisAdd"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="Y轴-正方向"
+                            Foreground="#208020"
+                            GroupName="CopyDirection"
+                            IsChecked="True" />
+                        <RadioButton
+                            x:Name="RadioButton_ZAxisAdd"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="Z轴-正方向"
+                            Foreground="#005080"
+                            GroupName="CopyDirection" />
+                        <RadioButton
+                            x:Name="RadioButton_XAxisSub"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="X轴-负方向"
+                            Foreground="#802020"
+                            GroupName="CopyDirection" />
+                        <RadioButton
+                            x:Name="RadioButton_YAxisSub"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="Y轴-负方向"
+                            Foreground="#208020"
+                            GroupName="CopyDirection" />
+                        <RadioButton
+                            x:Name="RadioButton_ZAxisSub"
+                            Checked="RadioButton_XYZAxis_Checked"
+                            Content="Z轴-负方向"
+                            Foreground="#005080"
+                            GroupName="CopyDirection" />
+                    </UniformGrid>
+                </DockPanel>
+
+                <!--  复制进度  -->
+                <ProgressBar
+                    x:Name="ProgressBar_TaskState"
+                    Margin="3"
+                    d:IsIndeterminate="True" />
+
+                <WrapPanel>
+                    <Button
+                        Name="Button_PrintSelectInfo"
+                        Click="Button_PrintSelectInfo_Click"
+                        Content="打印选中信息" />
+                    <!--  //////////  -->
+                    <Border
+                        Width="1"
+                        Margin="5"
+                        Background="#5C5A58" />
+                    <Button
+                        x:Name="Button_CopyMesh"
+                        Click="Button_CopyMesh_Click"
+                        Content="复制选中模型" />
+                </WrapPanel>
+            </StackPanel>
+        </GroupBox>
+
+    </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,44 @@
+<UserControl
+    x:Class="LevelEditorPlugin.BF1Core.Views.ScriptView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:LevelEditorPlugin.BF1Core.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="{DynamicResource UserControl_DesignHeight}"
+    d:DesignWidth="{DynamicResource UserControl_DesignWidth}"
+    Background="{DynamicResource UserControl_Background}"
+    Foreground="{DynamicResource UserControl_Foreground}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary Source="/LevelEditorPlugin;component/BF1Core/Themes/Generic.xaml" />
+    </UserControl.Resources>
+
+    <StackPanel>
+        <GroupBox Header="地图脚本">
+            <WrapPanel>
+                <Button
+                    x:Name="Button_ChangeMpUnderworldConquestAlternateSpawn"
+                    Click="Button_ChangeMpUnderworldConquestAlternateSpawn_Click"
+                    Content="修改要塞征服复活点"
+                    IsEnabled="False" />
+                <Button
+                    x:Name="Button_ChangeMpUnderworldTdmAlternateSpawn"
+                    Click="Button_ChangeMpUnderworldTdmAlternateSpawn_Click"
+                    Content="修改要塞死斗复活点" />
+            </WrapPanel>
+        </GroupBox>
+
+        <GroupBox Header="地图操作">
+            <WrapPanel>
+                <Button
+                    x:Name="Button_FixAlternateSpawnEntityData"
+                    Click="Button_FixAlternateSpawnEntityData_Click"
+                    Content="修复全部复活点组件"
+                    IsEnabled="True" />
+            </WrapPanel>
+        </GroupBox>
+    </StackPanel>
+
+</UserControl>

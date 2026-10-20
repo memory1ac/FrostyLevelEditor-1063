@@ -1,0 +1,15 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:entity="clr-namespace:LevelEditorPlugin.Entities"
+    xmlns:track="clr-namespace:LevelEditorPlugin.Controls.TrackEditors">
+
+    <DataTemplate DataType="{x:Type entity:TimelineTrack}" />
+    <DataTemplate DataType="{x:Type entity:FloatTrack}">
+        <track:FloatTrackEditor />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type entity:EventTrack}">
+        <track:EventTrackEditor />
+    </DataTemplate>
+
+</ResourceDictionary>

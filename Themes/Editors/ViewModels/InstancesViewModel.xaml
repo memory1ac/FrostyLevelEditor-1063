@@ -1,0 +1,91 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ctrl="clr-namespace:Frosty.Controls;assembly=FrostyControls"
+    xmlns:editors="clr-namespace:LevelEditorPlugin.Editors"
+    xmlns:z="clr-namespace:LevelEditorPlugin.Controls">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/FrostyControls;component/Themes/Generic.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+    <DataTemplate DataType="{x:Type editors:InstancesViewModel}">
+        <ctrl:FrostyDockablePanel BorderVisible="False" TitleBarVisible="False">
+            <Border BorderBrush="{StaticResource ControlBackground}" BorderThickness="0,2,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition />
+                        <RowDefinition Height="20" />
+                    </Grid.RowDefinitions>
+
+                    <ctrl:FrostyWatermarkTextBox
+                        x:Name="PART_FilterTextBox"
+                        Height="24"
+                        Padding="4,0,0,0"
+                        HorizontalAlignment="Stretch"
+                        VerticalContentAlignment="Center"
+                        BorderThickness="1"
+                        WatermarkText="Filter">
+                        <ctrl:FrostyWatermarkTextBox.Text>
+                            <Binding Path="FilterText" UpdateSourceTrigger="PropertyChanged" />
+                        </ctrl:FrostyWatermarkTextBox.Text>
+                    </ctrl:FrostyWatermarkTextBox>
+
+                    <z:ScrollingListBox
+                        x:Name="PART_InstancesListView"
+                        Grid.Row="1"
+                        ItemsSource="{Binding Path=Instances}"
+                        SelectedItem="{Binding Path=SelectedEntity, Mode=TwoWay}">
+                        <z:ScrollingListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel
+                                    x:Name="StackPanel_Bg"
+                                    Background="Transparent"
+                                    Opacity="1.0"
+                                    Orientation="Horizontal">
+                                    <StackPanel.InputBindings>
+                                        <MouseBinding
+                                            Command="{Binding Path=DataContext.EntityDoubleClickedCommand, RelativeSource={RelativeSource AncestorType={x:Type ListBox}}}"
+                                            CommandParameter="{Binding Path=DataContext, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}"
+                                            MouseAction="LeftDoubleClick" />
+                                    </StackPanel.InputBindings>
+
+                                    <CheckBox
+                                        Margin="0,0,4,0"
+                                        VerticalAlignment="Center"
+                                        IsChecked="{Binding Path=IsVisible}" />
+                                    <TextBlock VerticalAlignment="Center" Text="{Binding Path=DisplayName}" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Opacity="0.5"
+                                        Text=" in " />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Opacity="0.5"
+                                        Text="{Binding Path=Layer.LayerName}" />
+                                </StackPanel>
+
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Path=IsVisible}" Value="False">
+                                        <Setter TargetName="StackPanel_Bg" Property="Opacity" Value="0.5" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </z:ScrollingListBox.ItemTemplate>
+                    </z:ScrollingListBox>
+
+                    <TextBlock
+                        Grid.Row="2"
+                        Margin="0,0,4,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Foreground="{StaticResource FontColor}"
+                        Text="{Binding Path=Instances.Count}" />
+
+                </Grid>
+            </Border>
+        </ctrl:FrostyDockablePanel>
+    </DataTemplate>
+
+</ResourceDictionary>

@@ -1,0 +1,172 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="clr-namespace:LevelEditorPlugin.Converters"
+    xmlns:ctrl="clr-namespace:Frosty.Controls;assembly=FrostyControls"
+    xmlns:editors="clr-namespace:LevelEditorPlugin.Editors"
+    xmlns:z="clr-namespace:LevelEditorPlugin.Controls">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Common.xaml" />
+        <ResourceDictionary Source="/FrostyControls;component/Themes/Generic.xaml" />
+        <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Controls/Toolbar.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+    <SolidColorBrush x:Key="SchematicPropertyColor" Color="#5fd95f" />
+    <SolidColorBrush x:Key="SchematicEventColor" Color="#f8f8f8" />
+    <SolidColorBrush x:Key="SchematicLinkColor" Color="#6FA9CE" />
+
+    <conv:LogicEntityIconConverter x:Key="LogicEntityIconConverter" />
+
+    <DataTemplate DataType="{x:Type editors:SchematicsViewModel}">
+        <ctrl:FrostyDockablePanel
+            editors:LevelEditorAttachedBehaviors.HideCommand="{Binding Path=HideCommand}"
+            editors:LevelEditorAttachedBehaviors.LoadedCommand="{Binding Path=InitializeCommand}"
+            editors:LevelEditorAttachedBehaviors.ShowCommand="{Binding Path=ShowCommand}"
+            editors:LevelEditorAttachedBehaviors.UnloadedCommand="{Binding Path=UnloadCommand}"
+            BorderVisible="False"
+            FocusManager.FocusedElement="{Binding ElementName=canvas}"
+            TitleBarVisible="False">
+
+            <Border BorderBrush="{StaticResource ControlBackground}" BorderThickness="0,2,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="toolbarRow" Height="26" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <z:Toolbar Grid.Row="0" ItemsSource="{Binding Path=ToolbarItems}" />
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="leftColumn" Width="{Binding Path=Size, ElementName=schematicsLeftDockPanel, Mode=TwoWay}" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="4*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition x:Name="rightColumn" Width="{Binding Path=Size, ElementName=schematicsRightDockPanel, Mode=TwoWay}" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border
+                            x:Name="leftContent"
+                            Grid.Column="0"
+                            Background="{StaticResource ControlBackground}">
+                            <Grid Margin="2" Background="{StaticResource ListBackground}">
+
+                                <z:DockPanel
+                                    x:Name="schematicsLeftDockPanel"
+                                    DockLocation="Left"
+                                    DockManager="{Binding Path=DockManager}" />
+
+                            </Grid>
+                        </Border>
+
+                        <GridSplitter
+                            x:Name="leftGridSplitter"
+                            Grid.Column="1"
+                            Width="2"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Stretch"
+                            Background="{StaticResource ControlBackground}"
+                            ResizeDirection="Columns"
+                            ShowsPreview="True" />
+
+                        <ctrl:FrostyDockablePanel
+                            x:Name="mainContent"
+                            Title=""
+                            Grid.Column="2"
+                            BorderVisible="False"
+                            TitleBarVisible="False">
+                            <Border
+                                x:Name="mainBorder"
+                                BorderBrush="{StaticResource ControlBackground}"
+                                BorderThickness="0,2,0,2">
+                                <z:SchematicsCanvas
+                                    x:Name="canvas"
+                                    editors:DragDropExtension.IsDragDropTarget="True"
+                                    Background="{StaticResource CanvasBackground}"
+                                    ConnectorOrdersVisible="{Binding Path=IsConnectorOrdersVisible}"
+                                    GridMajorBrush="{StaticResource CanvasGridMajor}"
+                                    GridMinorBrush="{StaticResource CanvasGridMinor}"
+                                    GridVisible="{Binding Path=IsGridVisible}"
+                                    ItemsSource="{Binding Path=SchematicsData}"
+                                    ModifiedData="{Binding Path=ModifiedData}"
+                                    NodeModifiedCommand="{Binding Path=NodeModifiedCommand}"
+                                    NodeRemovedCommand="{Binding Path=NodeRemovedCommand}"
+                                    SchematicEventBrush="{StaticResource SchematicEventColor}"
+                                    SchematicLinkBrush="{StaticResource SchematicLinkColor}"
+                                    SchematicPropertyBrush="{StaticResource SchematicPropertyColor}"
+                                    SelectedNodeChangedCommand="{Binding Path=SelectedNodeChangedCommand}"
+                                    SuppressLayoutSave="{Binding Path=SuppressLayoutSave}"
+                                    UpdateDebug="{Binding Path=UpdateDebugLayer}"
+                                    UseAlternateConnectorOrders="{Binding Path=UseAlternateConnectorOrders}"
+                                    UseCurvedLines="{Binding Path=UseCurvedLines}"
+                                    WireAddedCommand="{Binding Path=WireAddedCommand}"
+                                    WireRemovedCommand="{Binding Path=WireRemovedCommand}" />
+                            </Border>
+                        </ctrl:FrostyDockablePanel>
+
+                        <GridSplitter
+                            x:Name="rightGridSplitter"
+                            Grid.Column="3"
+                            Width="2"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Stretch"
+                            Background="{StaticResource ControlBackground}"
+                            ResizeDirection="Columns"
+                            ShowsPreview="True" />
+
+                        <Border
+                            x:Name="rightContent"
+                            Grid.Column="4"
+                            Background="{StaticResource ControlBackground}">
+                            <Grid Margin="2" Background="{StaticResource ListBackground}">
+
+                                <z:DockPanel
+                                    x:Name="schematicsRightDockPanel"
+                                    DockLocation="Right"
+                                    DockManager="{Binding Path=DockManager}" />
+
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </ctrl:FrostyDockablePanel>
+
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Path=IsDockedInEditor}" Value="True">
+                <Setter TargetName="toolbarRow" Property="Height" Value="0" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding ElementName=schematicsLeftDockPanel, Path=HasItems}" Value="False">
+                <Setter TargetName="leftContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="leftGridSplitter" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="mainContent" Property="Grid.Column" Value="0" />
+                <Setter TargetName="mainContent" Property="Grid.ColumnSpan" Value="3" />
+                <Setter TargetName="mainBorder" Property="BorderThickness" Value="2,2,0,2" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding ElementName=schematicsRightDockPanel, Path=HasItems}" Value="False">
+                <Setter TargetName="rightContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="rightGridSplitter" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="mainContent" Property="Grid.ColumnSpan" Value="3" />
+                <Setter TargetName="mainBorder" Property="BorderThickness" Value="0,2,2,2" />
+            </DataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding ElementName=schematicsLeftDockPanel, Path=HasItems}" Value="False" />
+                    <Condition Binding="{Binding ElementName=schematicsRightDockPanel, Path=HasItems}" Value="False" />
+                </MultiDataTrigger.Conditions>
+                <MultiDataTrigger.Setters>
+                    <Setter TargetName="leftContent" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="leftGridSplitter" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="rightContent" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="rightGridSplitter" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="mainContent" Property="Grid.Column" Value="0" />
+                    <Setter TargetName="mainContent" Property="Grid.ColumnSpan" Value="5" />
+                    <Setter TargetName="mainBorder" Property="BorderThickness" Value="2,2,2,2" />
+                </MultiDataTrigger.Setters>
+            </MultiDataTrigger>
+        </DataTemplate.Triggers>
+
+    </DataTemplate>
+
+</ResourceDictionary>

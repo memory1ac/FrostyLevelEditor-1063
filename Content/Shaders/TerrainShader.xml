@@ -1,0 +1,75 @@
+<shader profile="*">
+	<permutations>
+		<permutation>
+			<vertexshader>
+				<vertexlayout>
+					<layoutelement usage="Pos" format="Float3"/>
+					<layoutelement usage="Normal" format="Float3"/>
+					<layoutelement usage="TexCoord0" format="Float2"/>
+					<layoutelement usage="Color0" format="Float3"/>
+				</vertexlayout>
+			</vertexshader>
+			<pixelshader>
+				<parameters>
+					<parameter name="Color" type="Float4" defaultValue="1,0,0,1"/>
+					<parameter name="HoleMaskIndex" type="Float4" defaultValue="-1,-1,-1,-1"/>
+					<parameter name="LayerOffsets1" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets2" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets3" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets4" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets5" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets6" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets7" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets8" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets9" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets10" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets11" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerOffsets12" type="Float4" defaultValue="1,1,1,1"/>
+					<parameter name="LayerHasColor1" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="LayerHasColor2" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="LayerHasColor3" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="LayerHasColor4" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="LayerHasColor5" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="LayerHasColor6" type="Float4" defaultValue="0,0,0,0"/>
+					<parameter name="TextureTileSize" type="Float4" defaultValue="4,4,0,0"/>
+				</parameters>
+				<textures>
+					<texture name="LayerGroup1" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerGroup2" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerGroup3" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerGroup4" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerGroup5" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerGroup6" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor0" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor1" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor2" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor3" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor4" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor5" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor6" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor7" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor8" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor9" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor10" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor11" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor12" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor13" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor14" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor15" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor16" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor17" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor18" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor19" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor20" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor21" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor22" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+					<texture name="LayerColor23" type="2d" defaultValue="Resources/Textures/DefaultLayer.dds"/>
+				</textures>
+				<samplers>
+					<sampler addressU="Clamp" addressV="Clamp" addressW="Clamp" Filter="Anisotropic"/>
+					<sampler addressU="Wrap" addressV="Wrap" addressW="Wrap" Filter="Anisotropic"/>
+				</samplers>
+			</pixelshader>
+		</permutation>
+	</permutations>
+</shader>
