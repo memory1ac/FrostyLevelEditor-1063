@@ -32,6 +32,7 @@ using System.Windows;
 
 [assembly: RegisterMenuExtension(typeof(BF1CoreMenuExtension))]
 [assembly: RegisterDataExplorerContextMenu(typeof(OpenLevelEditorContextMenuItem))]
+[assembly: RegisterStartupAction(typeof(ResourceStartupAction))]
 
 [assembly: RegisterAssetDefinition("LevelData", typeof(LevelDataAssetDefinition))]
 [assembly: RegisterAssetDefinition("SubWorldData", typeof(SubWorldDataAssetDefinition))]

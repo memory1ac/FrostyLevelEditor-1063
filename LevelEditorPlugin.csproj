@@ -86,15 +86,17 @@
 		<Content Include="Content\**\*.*">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+		<EmbeddedResource Include="Content\**\*.*" />
 	</ItemGroup>
 
-	<PropertyGroup>
-		<_FrostyRoot>$(SolutionDir)</_FrostyRoot>
-		<_FrostyRoot Condition="'$(_FrostyRoot)' == '' Or '$(_FrostyRoot)' == '*Undefined*'">$(MSBuildThisFileDirectory)..\..\</_FrostyRoot>
-	</PropertyGroup>
-
-	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="xcopy /Y /I &quot;$(TargetPath)&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Plugins\&quot;&#xD;&#xA;xcopy /Y /E /I &quot;$(ProjectDir)Content&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Plugins\LevelEditor\Content\&quot;&#xD;&#xA;xcopy /Y /I &quot;$(ProjectDir)Content\Shaders\*.*&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Shaders\&quot;&#xD;&#xA;if not exist &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Resources\Textures&quot; mkdir &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Resources\Textures&quot;&#xD;&#xA;xcopy /Y /I &quot;$(ProjectDir)Content\Textures\DefaultSprite.dds&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Resources\Textures\&quot;&#xD;&#xA;xcopy /Y /I &quot;$(ProjectDir)Content\Textures\DefaultLayer.dds&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Resources\Textures\&quot;&#xD;&#xA;xcopy /Y /E /I &quot;$(ProjectDir)Content\Textures&quot; &quot;$(_FrostyRoot)FrostyEditor\$(OutDir)Resources\Textures\LevelEditor\&quot;" />
+	<Target Name="CopyToFrostyEditorPlugins" AfterTargets="AfterBuild">
+		<!-- AfterBuild 时 OutputPath 才有值。不要用 SolutionDir，VS 打开 FrostyEditor.sln 会拷到嵌套目录。 -->
+		<PropertyGroup>
+			<_EditorPlugins>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\FrostyEditor\$(OutputPath)Plugins\'))</_EditorPlugins>
+		</PropertyGroup>
+		<Message Importance="high" Text="Copying $(TargetPath) -> $(_EditorPlugins)" />
+		<MakeDir Directories="$(_EditorPlugins)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_EditorPlugins)" SkipUnchangedFiles="false" Retries="2" RetryDelayMilliseconds="500" />
 	</Target>
 
 	<ItemGroup>

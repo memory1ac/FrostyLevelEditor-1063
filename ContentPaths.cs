@@ -9,6 +9,8 @@ public static class ContentPaths
     {
         get
         {
+            ResourceExtractor.EnsureExtracted();
+
             string pluginDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
             string besidePlugin = Path.Combine(pluginDirectory, "LevelEditor", "Content");
             if (Directory.Exists(besidePlugin))
