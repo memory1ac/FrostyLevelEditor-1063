@@ -636,6 +636,10 @@ public static class LevelPlacementService
             rod.CastEnvmapEnable = true;
             SetProperty(rod, "BlueprintTransform", Entity.MakeLinearTransform(Matrix.Translation(worldPoint)));
 
+            // 可变体模型（例如 PillboxBreakable_01）必须带 ObjectVariation，
+            // 否则运行时会因为材质变体为空而在 LOD 计算里崩溃。
+            TryAssignObjectVariation(rod, blueprintEntry, worldPartAsset, worldPartEntry);
+
             AssetClassGuid classGuid = new AssetClassGuid(
                 FrostySdk.Utils.GenerateDeterministicGuid(worldPartAsset.Objects, (Type)newObject.GetType(), worldPartAsset.FileGuid), -1);
             ((dynamic)newObject).SetInstanceGuid(classGuid);
@@ -644,7 +648,7 @@ public static class LevelPlacementService
             // DataBusPeer 需要把 guid 的低位塞进 Flags，否则运行时识别不到实例
             try
             {
-                SetProperty(rod, "Flags", unchecked((uint)instanceGuid.GetHashCode()));
+                SetProperty(rod, "Flags", MakeObjectFlags(instanceGuid));
             }
             catch (Exception)
             {
@@ -755,6 +759,264 @@ public static class LevelPlacementService
             return;
 
         prop.SetValue(target, value);
+    }
+
+    /// <summary>
+    /// DataBusPeer 的 Flags：低 25 位是实例 GUID 的低位，realm 位留空。
+    /// </summary>
+    private static uint MakeObjectFlags(Guid instanceGuid)
+    {
+        byte[] bytes = instanceGuid.ToByteArray();
+        return (uint)((bytes[2] << 16) | (bytes[1] << 8) | bytes[0]);
+    }
+
+    #endregion
+
+    #region -- ObjectVariation 修复 --
+
+    /// <summary>
+    /// 放置 ObjectBlueprint 时自动补上 ObjectVariation。
+    ///
+    /// 崩溃根因：实例的 ObjectVariation 为空（VariationAssetNameHash = 0），
+    /// 而该 WorldPart 所属的 MeshVariationDb 里这个网格又没有 hash 0 的默认条目时，
+    /// 运行时拿到的材质变体指针是 null，在 LOD 距离计算（bf1.exe+0x112F84E）里被直接解引用。
+    ///
+    /// 选择顺序：与蓝图同名的变体 → 本 WorldPart 其它对象已经在用的变体 → 任意可用变体。
+    /// </summary>
+    private static void TryAssignObjectVariation(dynamic rod, EbxAssetEntry blueprintEntry, EbxAsset worldPartAsset, EbxAssetEntry worldPartEntry)
+    {
+        try
+        {
+            Assets.MeshVariationDatabase database = FindMeshVariationDatabase(worldPartEntry);
+            if (database == null)
+                return;
+
+            List<Guid> meshGuids = CollectBlueprintMeshGuids(blueprintEntry);
+            if (meshGuids.Count == 0)
+                return;
+
+            List<Guid> missingDefault = [];
+            foreach (Guid meshGuid in meshGuids)
+            {
+                if (!database.HasVariation(meshGuid, 0))
+                    missingDefault.Add(meshGuid);
+            }
+
+            if (missingDefault.Count == 0)
+                return;
+
+            // 先找能覆盖蓝图里所有网格的变体（一个 ObjectVariation 会同时作用于蓝图的全部网格；
+            // 只要有一个网格在该变体下没有数据库条目，运行时依然会拿到空指针）。
+            // 找不到时再退化成只覆盖"缺默认变体"的那几个网格的旧逻辑。
+            bool partialCoverage = false;
+            HashSet<uint> candidates = IntersectResolvableHashes(database, meshGuids);
+            if (candidates.Count == 0)
+            {
+                candidates = IntersectResolvableHashes(database, missingDefault);
+                partialCoverage = candidates.Count != 0;
+            }
+
+            if (candidates.Count == 0)
+            {
+                App.Logger?.LogWarning($"[ObjectPalette] {blueprintEntry.Name} 的网格在 {worldPartEntry.Name} 的 MeshVariationDb 里既没有默认变体也没有公共变体，进入关卡可能崩溃。");
+                return;
+            }
+
+            if (partialCoverage)
+            {
+                App.Logger?.LogWarning($"[ObjectPalette] {blueprintEntry.Name} 没有能覆盖全部网格的变体，只能绑定部分覆盖的变体，部分网格仍可能崩溃。");
+            }
+
+            string blueprintName = System.IO.Path.GetFileNameWithoutExtension(blueprintEntry.Name);
+            List<Guid> usedVariations = CollectUsedVariationGuids(worldPartAsset);
+
+            uint chosen = 0;
+            foreach (uint hash in candidates.OrderBy(hash => hash))
+            {
+                string variationName = database.GetVariationName(hash);
+                if (string.IsNullOrEmpty(variationName))
+                    continue;
+
+                string variationFileName = System.IO.Path.GetFileName(variationName);
+                if (variationFileName.StartsWith(blueprintName, StringComparison.OrdinalIgnoreCase))
+                {
+                    chosen = hash;
+                    break;
+                }
+            }
+
+            if (chosen == 0 && usedVariations.Count != 0)
+            {
+                foreach (uint hash in candidates.OrderBy(hash => hash))
+                {
+                    if (usedVariations.Contains(database.GetVariationFileGuid(hash)))
+                    {
+                        chosen = hash;
+                        break;
+                    }
+                }
+            }
+
+            if (chosen == 0)
+                chosen = candidates.OrderBy(hash => hash).First();
+
+            PointerRef variation = database.GetVariation(chosen);
+            if (variation.Type != PointerRefType.External)
+                return;
+
+            SetProperty(rod, "ObjectVariation", variation);
+            App.Logger?.Log($"[ObjectPalette] {blueprintEntry.Name} 自动绑定 ObjectVariation：{database.GetVariationName(chosen)}");
+        }
+        catch (Exception ex)
+        {
+            App.Logger?.LogWarning($"[ObjectPalette] 解析 ObjectVariation 失败：{ex.Message}");
+        }
+    }
+
+    private static Assets.MeshVariationDatabase FindMeshVariationDatabase(EbxAssetEntry worldPartEntry)
+    {
+        string assetName = worldPartEntry?.Name;
+        if (string.IsNullOrEmpty(assetName))
+            return null;
+
+        int lastSlash = assetName.LastIndexOf('/');
+        if (lastSlash <= 0)
+            return null;
+
+        string targetDirectory = NormalizeDirectory(assetName.Substring(0, lastSlash));
+
+        // BF1 的标准布局：MeshVariationDb_Win32 和 WorldPartData 在同一个目录里
+        foreach (EbxAssetEntry entry in App.AssetManager.EnumerateEbx("MeshVariationDatabase"))
+        {
+            if (!string.Equals(NormalizeDirectory(System.IO.Path.GetDirectoryName(entry.Name)), targetDirectory, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            Assets.MeshVariationDatabase database = LoadedAssetManager.Instance.LoadAsset<Assets.MeshVariationDatabase>(entry.Guid);
+            if (database?.Data != null)
+                return database;
+        }
+
+        // 兜底：按 bundle 名拼路径
+        foreach (string bundleName in GetBundleNames(worldPartEntry))
+        {
+            string candidate = $"{bundleName}/MeshVariationDb_Win32";
+            if (App.AssetManager.GetEbxEntry(candidate) == null)
+                continue;
+
+            Assets.MeshVariationDatabase database = LoadedAssetManager.Instance.LoadAsset<Assets.MeshVariationDatabase>(candidate);
+            if (database?.Data != null)
+                return database;
+        }
+
+        return null;
+    }
+
+    private static string NormalizeDirectory(string path)
+    {
+        return string.IsNullOrEmpty(path) ? string.Empty : path.Replace('\\', '/').TrimEnd('/');
+    }
+
+    private static List<Guid> CollectBlueprintMeshGuids(EbxAssetEntry blueprintEntry)
+    {
+        List<Guid> meshGuids = [];
+        EbxAsset asset = App.AssetManager.GetEbx(blueprintEntry);
+        if (asset == null)
+            return meshGuids;
+
+        foreach (object ebxObject in asset.Objects)
+        {
+            if (ebxObject == null)
+                continue;
+
+            foreach (PropertyInfo prop in ebxObject.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.PropertyType != typeof(PointerRef) || prop.GetIndexParameters().Length != 0)
+                    continue;
+
+                if (prop.GetValue(ebxObject) is not PointerRef pointerRef || pointerRef.Type != PointerRefType.External)
+                    continue;
+
+                Guid meshGuid = pointerRef.External.FileGuid;
+                if (meshGuid == Guid.Empty || meshGuids.Contains(meshGuid))
+                    continue;
+
+                EbxAssetEntry meshEntry = App.AssetManager.GetEbxEntry(meshGuid);
+                if (meshEntry != null && IsMeshAssetType(meshEntry.Type))
+                    meshGuids.Add(meshGuid);
+            }
+        }
+
+        return meshGuids;
+    }
+
+    /// <summary>
+    /// 判断是不是 Mesh 资源。除了 CompositeMeshAsset，BF1 里大量道具（例如
+    /// LampHangingLarge_01_Banger）用的是 RigidMeshAsset，之前只认 CompositeMeshAsset
+    /// 会导致这些蓝图拿不到 ObjectVariation。
+    /// </summary>
+    private static bool IsMeshAssetType(string typeName)
+    {
+        if (string.IsNullOrEmpty(typeName))
+            return false;
+
+        if (!typeName.EndsWith("MeshAsset", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // MeshSetAsset / 变体数据库之类不是网格
+        return !typeName.StartsWith("MeshSet", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 求这些网格共有的变体哈希：不含默认变体 0，并且该哈希必须能对应到一个真实存在的
+    /// ObjectVariation 资产（数据库里残留的 hash 如果没有对应资产，绑上去照样崩溃）。
+    /// </summary>
+    private static HashSet<uint> IntersectResolvableHashes(Assets.MeshVariationDatabase database, List<Guid> meshGuids)
+    {
+        HashSet<uint> candidates = null;
+        foreach (Guid meshGuid in meshGuids)
+        {
+            HashSet<uint> hashes = [];
+            foreach (uint hash in database.GetVariationHashes(meshGuid))
+            {
+                if (hash == 0)
+                    continue;
+                if (database.GetVariationFileGuid(hash) == Guid.Empty)
+                    continue;
+                hashes.Add(hash);
+            }
+
+            if (candidates == null)
+                candidates = hashes;
+            else
+                candidates.IntersectWith(hashes);
+
+            if (candidates.Count == 0)
+                return [];
+        }
+
+        return candidates ?? [];
+    }
+
+    private static List<Guid> CollectUsedVariationGuids(EbxAsset worldPartAsset)
+    {
+        List<Guid> used = [];
+        if (worldPartAsset == null)
+            return used;
+
+        foreach (object ebxObject in worldPartAsset.Objects)
+        {
+            PropertyInfo prop = ebxObject?.GetType().GetProperty("ObjectVariation");
+            if (prop == null || prop.PropertyType != typeof(PointerRef))
+                continue;
+
+            if (prop.GetValue(ebxObject) is not PointerRef pointerRef || pointerRef.Type != PointerRefType.External)
+                continue;
+
+            if (pointerRef.External.FileGuid != Guid.Empty)
+                used.Add(pointerRef.External.FileGuid);
+        }
+
+        return used;
     }
 
     #endregion
