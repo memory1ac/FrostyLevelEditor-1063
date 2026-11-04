@@ -59,7 +59,7 @@ public class ObjectBlueprintEditor : SpatialEditor
 
     public override List<ToolbarItem> RegisterToolbarItems()
     {
-        return
+        List<ToolbarItem> items =
         [
             new DockingToolbarItem("", "Show/Hide components tab", "Images/Components.png",
                 new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new ComponentsViewModel(this))), DockManager, "UID_LevelEditor_Components"),
@@ -73,6 +73,11 @@ public class ObjectBlueprintEditor : SpatialEditor
             //new RegularToolbarItem("", "Capture thumbnail preview", "LevelEditorPlugin/Images/CaptureThumbnail.png", new RelayCommand((o) => { CaptureThumbnail(viewport); })),
             //new ToggleToolbarItem("", "Show/Hide thumbnail safezone", "LevelEditorPlugin/Images/ThumbnailSafezone.png", false, new RelayCommand((o) => { ShowThumbnailSafeZone(thumbnailBorder.Visibility == Visibility.Collapsed, viewport); }))
         ];
+
+        // 单个 ObjectBlueprint 的视口也能查看它的 Havok 碰撞体
+        HavokOverlayToolbar.Add(items, this, logger);
+
+        return items;
     }
 
     public override void OnApplyTemplate()

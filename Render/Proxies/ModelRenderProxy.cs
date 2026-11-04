@@ -184,6 +184,9 @@ public class ModelRenderProxy : RenderProxy
         }
     }
 
+    /// <summary>是否具备可射线求交的网格（没有 LOD 的模型不参与点击拾取）</summary>
+    public bool CanHitTest => renderData?.Lods is { Count: > 0 };
+
     public override bool HitTest(Ray hitTestRay, out Vector3 hitLocation)
     {
         return renderData.Lods[0].HitTest(Transform, hitTestRay, out hitLocation);

@@ -21,6 +21,22 @@
         Padding="0,0,4,0">
         <StackPanel>
 
+        <GroupBox Header="视图选项">
+            <StackPanel>
+                <DockPanel Margin="3">
+                    <TextBlock
+                        Width="70"
+                        VerticalAlignment="Center"
+                        FontWeight="Bold"
+                        Text="View Mode:" />
+                    <ComboBox
+                        x:Name="ComboBox_ViewMode"
+                        MinWidth="120"
+                        SelectionChanged="ComboBox_ViewMode_SelectionChanged" />
+                </DockPanel>
+            </StackPanel>
+        </GroupBox>
+
         <GroupBox Header="选中信息">
             <StackPanel>
                 <DockPanel>

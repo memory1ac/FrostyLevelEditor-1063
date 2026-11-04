@@ -23,6 +23,7 @@
         <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/ViewModels/TimelineViewModel.xaml" />
         <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/ViewModels/InterfaceViewModel.xaml" />
         <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/ViewModels/ToolboxViewModel.xaml" />
+        <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/ViewModels/ObjectPaletteViewModel.xaml" />
         <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/LogicEditor.xaml" />
         <ResourceDictionary Source="/LevelEditorPlugin;component/Themes/Editors/SpatialEditor.xaml" />
     </ResourceDictionary.MergedDictionaries>

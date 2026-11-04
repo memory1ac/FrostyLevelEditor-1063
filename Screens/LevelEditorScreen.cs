@@ -12,6 +12,7 @@ using LevelEditorPlugin.Options;
 using LevelEditorPlugin.Library.Image;
 using LevelEditorPlugin.Managers;
 using LevelEditorPlugin.Render;
+using LevelEditorPlugin.Render.Havok;
 using LevelEditorPlugin.Render.Proxies;
 using SharpDX;
 using System;
@@ -622,8 +623,29 @@ public class LevelEditorScreen : DeferredRenderScreen2
     private Queue<RenderAction> renderTasks = new Queue<RenderAction>();
     private List<RenderProxy> proxies = [];
 
+    /// <summary>放置取点的射线检测上限（世界单位），超出这个距离的模型不参与命中</summary>
+    private const float PlacementPickMaxDistance = 250.0f;
+    /// <summary>放置取点窄相位（逐三角形）的时间预算，超时退回包围盒结果，避免拖拽时掉帧</summary>
+    private const double PlacementPickTriangleBudgetMs = 4.0;
+
+    private struct PlacementPickCandidate
+    {
+        public ModelRenderProxy Proxy;
+        public float NearDistance;
+        public Vector3 BoxPoint;
+    }
+
+    private readonly List<PlacementPickCandidate> placementPickCandidates = [];
+
+    // Havok 碰撞体叠加层（工具栏开关控制，见 LevelEditor.RegisterToolbarItems）
+    private HavokOverlay havokOverlay;
+    private bool havokOverlayDirty;
+    private int lastHavokProxyCount = -1;
+
     private TranslateGizmo translateGizmo;
     private BindableDepthTexture gizmoDepthTexture;
+    private SelectionHighlightPass selectionHighlight;
+    private bool selectionHighlightUnavailable;
     private bool gizmoDragActive;
     private bool terrainPainting;
     private readonly Stopwatch terrainPaintClock = new Stopwatch();
@@ -653,6 +675,49 @@ public class LevelEditorScreen : DeferredRenderScreen2
             entity.CreateRenderProxy(newProxies, state);
             proxies.AddRange(newProxies);
         });
+
+        havokOverlayDirty = true;
+    }
+
+    /// <summary>
+    /// 是否在关卡视口里叠加显示 Havok 物理碰撞体（几何来自 ObjectBlueprint 引用的 HavokPhysicsData res）。
+    /// </summary>
+    public bool ShowHavokCollision
+    {
+        get => LevelEditorRenderingOptions.ShowHavokCollision;
+        set
+        {
+            if (LevelEditorRenderingOptions.ShowHavokCollision == value)
+                return;
+
+            LevelEditorRenderingOptions.ShowHavokCollision = value;
+            havokOverlayDirty = true;
+        }
+    }
+
+    /// <summary>关卡内容变化（实体增删/重新载入）后调用，让叠加层重新收集实例。</summary>
+    public void RefreshHavokOverlay() => havokOverlayDirty = true;
+
+    /// <summary>
+    /// 叠加层的生命周期：开关打开时懒创建，分帧解析碰撞资源，关掉时只停止绘制（缓冲保留，避免反复重解析）。
+    /// </summary>
+    private void UpdateHavokOverlay()
+    {
+        if (!LevelEditorRenderingOptions.ShowHavokCollision || Viewport?.Device == null || Viewport.Context == null)
+            return;
+
+        havokOverlay ??= new HavokOverlay(Viewport.Device);
+
+        // Proxy 是在 Render 阶段（renderTasks 里）建出来的，所以除了 dirty 标记还要看数量变化，
+        // 否则刚 AddEntity 完的那一批会漏掉。
+        if (havokOverlayDirty || proxies.Count != lastHavokProxyCount)
+        {
+            lastHavokProxyCount = proxies.Count;
+            havokOverlay.Rebuild(proxies);
+            havokOverlayDirty = false;
+        }
+
+        havokOverlay.Pump();
     }
 
     public void DeleteEntityFromRenderProxy(Entity entity)
@@ -668,6 +733,8 @@ public class LevelEditorScreen : DeferredRenderScreen2
                 proxies.Remove(renderProxy);
             }
         });
+
+        havokOverlayDirty = true;
     }
 
     public override void Update(double timestep)
@@ -676,6 +743,8 @@ public class LevelEditorScreen : DeferredRenderScreen2
         RenderMode = LevelEditorRenderingOptions.GetDebugRenderMode();
 
         base.Update(timestep);
+
+        UpdateHavokOverlay();
 
         if (TerrainEditState.IsTerrainEditModeEnabled)
             translateGizmo.IsVisible = false;
@@ -803,6 +872,15 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
         translateGizmo.Dispose();
 
+        selectionHighlight?.Dispose();
+        selectionHighlight = null;
+        selectionHighlightUnavailable = false;
+
+        havokOverlay?.Dispose();
+        havokOverlay = null;
+        havokOverlayDirty = true;
+        lastHavokProxyCount = -1;
+
         foreach (RenderProxy proxy in proxies)
             proxy.Dispose();
 
@@ -855,8 +933,19 @@ public class LevelEditorScreen : DeferredRenderScreen2
     {
         ClearSelection();
 
-        IEnumerable<RenderProxy> foundProxies = proxies.Where(rp => rp.OwnerEntity.Owner == entity);
-        if (foundProxies.Count() == 0)
+        // proxies 由渲染线程增删，这里在 UI 线程做快照再筛选，避免「集合已修改」
+        RenderProxy[] snapshot;
+        try
+        {
+            snapshot = proxies.ToArray();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        List<RenderProxy> foundProxies = snapshot.Where(rp => rp.OwnerEntity?.Owner == entity).ToList();
+        if (foundProxies.Count == 0)
             return;
 
         // 显示位移控制器（包括 StaticModelGroup 子元素，现已支持修改）
@@ -1041,7 +1130,18 @@ public class LevelEditorScreen : DeferredRenderScreen2
         BoundingFrustum cameraFrustum = BoundingFrustum.FromCamera(worldMatrix.TranslationVector, worldMatrix.Backward, worldMatrix.Down, currentCamera.FOV, currentCamera.GetNearClip(), currentCamera.GetFarClip(), currentCamera.AspectRatio);
         List<MeshRenderInstance> instancesInView = [];
 
-        foreach (RenderProxy proxy in proxies)
+        // 点击选择也跑在 UI 线程，而 proxies 由渲染线程增删，同样先取快照
+        RenderProxy[] snapshot;
+        try
+        {
+            snapshot = proxies.ToArray();
+        }
+        catch (Exception)
+        {
+            return instancesInView;
+        }
+
+        foreach (RenderProxy proxy in snapshot)
         {
             float dist = (proxy.Transform.TranslationVector - worldMatrix.TranslationVector).Length();
             float width = cameraFrustum.GetWidthAtDepth(dist);
@@ -1082,6 +1182,15 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
     public override void MouseDown(int x, int y, MouseButton button)
     {
+        // 素材库的点击放置模式：先吞掉这次左键点击，避免触发选择/gizmo
+        if (button == MouseButton.Left &&
+            EditorProvider is LevelEditor levelEditor &&
+            levelEditor.PendingPlacement != null)
+        {
+            levelEditor.PlaceAt(x, y);
+            return;
+        }
+
         if (TerrainEditState.IsTerrainEditModeEnabled)
         {
             if (button == MouseButton.Left)
@@ -1184,6 +1293,14 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
     public override void MouseMove(int x, int y)
     {
+        // 素材库的点击放置模式：预览模型跟随光标，不再处理 gizmo 拖动
+        if (EditorProvider is LevelEditor levelEditor && levelEditor.PendingPlacement != null)
+        {
+            levelEditor.UpdatePlacementPreview(x, y);
+            base.MouseMove(x, y);
+            return;
+        }
+
         if (TerrainEditState.IsTerrainEditModeEnabled)
         {
             if (terrainPainting)
@@ -1298,6 +1415,13 @@ public class LevelEditorScreen : DeferredRenderScreen2
         Viewport.Context.OutputMerger.DepthStencilState = D3DUtils.CreateDepthStencilState(true, depthComparison: D3D11.Comparison.LessEqual);
         Viewport.Context.OutputMerger.BlendState = D3DUtils.CreateBlendState(D3DUtils.CreateBlendStateRenderTarget());
 
+        // Havok 碰撞体叠加：用这张只含前景的深度缓冲，所以永远画在模型上面；
+        // 放在 gizmo 之前，保证位移/旋转手柄始终在最上层。
+        if (havokOverlay != null && LevelEditorRenderingOptions.ShowHavokCollision)
+        {
+            havokOverlay.Draw(Viewport.Context, camera.GetViewProjMatrix(), gizmoDepthTexture.DSV, camera.GetEyePt());
+        }
+
         List<MeshRenderInstance> instances = [];
         if (translateGizmo.IsVisible)
             instances.Add(translateGizmo.GetInstance());
@@ -1309,7 +1433,365 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
     protected override void PostProcessSelectionOutline()
     {
-        base.PostProcessSelectionOutline();
+        // 自带的 SelectionOutline 用“世界深度差 / 10000”判断边缘，而关卡相机的远裁剪面是 1000，
+        // 这个阈值永远触发不了，所以换成插件里的屏幕空间描边（见 Render/SelectionHighlightPass.cs）。
+        RenderSelectionDepthForSelection();
+
+        if (!EnsureSelectionHighlight())
+        {
+            base.PostProcessSelectionOutline();
+            return;
+        }
+
+        selectionHighlight.Render(
+            Viewport.Context,
+            vsFullscreenQuad,
+            commonConstants.Buffer,
+            selectionOutlineTexture,
+            finalColorTexture.SRV,
+            selectionDepthTexture,
+            Viewport.DepthBufferSRV,
+            Viewport.ViewportWidth,
+            Viewport.ViewportHeight);
+    }
+
+    /// <summary>
+    /// 兼容版 Frosty 1.0.6.3 的基类只会把 meshes[0] 写进选择遮罩（Frosty2000 核心新增的
+    /// CollectSelectionMeshInstances 虚方法在这里并不存在）。关卡编辑器有上千个实例，
+    /// meshes[0] 通常不是选中的物体，所以这里用当前选中的 RenderProxy 重新画一遍选择遮罩。
+    /// </summary>
+    private void RenderSelectionDepthForSelection()
+    {
+        if (selectedProxies.Count == 0)
+            return;
+
+        D3DUtils.BeginPerfEvent(Viewport.Context, "CollectSelections");
+        try
+        {
+            // 和基类的 PostProcessCollectSelections 保持一致
+            UpdateViewConstants(false);
+
+            selectionDepthTexture.Clear(Viewport.Context, true, true, 1.0f, 0);
+            Viewport.Context.OutputMerger.SetRenderTargets(selectionDepthTexture.DSV, null, null);
+            Viewport.Context.OutputMerger.DepthStencilState = D3DUtils.CreateDepthStencilState(depthComparison: D3D11.Comparison.LessEqual);
+            Viewport.Context.OutputMerger.BlendState = D3DUtils.CreateBlendState(D3DUtils.CreateBlendStateRenderTarget());
+            Viewport.Context.Rasterizer.State = D3DUtils.CreateRasterizerState(D3D11.CullMode.Front, depthClip: true);
+
+            Viewport.Context.VertexShader.SetConstantBuffer(0, viewConstants.Buffer);
+
+            Viewport.Context.PixelShader.SetConstantBuffer(0, viewConstants.Buffer);
+            Viewport.Context.PixelShader.SetShaderResource(0, normalBasisCubemapTexture.SRV);
+            Viewport.Context.PixelShader.SetSampler(0, D3DUtils.CreateSamplerState(D3D11.TextureAddressMode.Clamp, filter: D3D11.Filter.MinMagMipPoint));
+
+            List<MeshRenderInstance> selectionInstances = [];
+            foreach (RenderProxy proxy in selectedProxies)
+            {
+                // 只有模型代理支持 Selection 通道；Sprite/Gizmo 不参与描边
+                if (proxy is ModelRenderProxy)
+                    selectionInstances.Add(proxy.GetInstance(proxy.CurrentDistanceToCamera));
+            }
+
+            if (selectionInstances.Count > 0)
+                RenderMeshes(MeshRenderPath.Selection, selectionInstances);
+        }
+        finally
+        {
+            D3DUtils.EndPerfEvent(Viewport.Context);
+        }
+    }
+
+    private bool EnsureSelectionHighlight()
+    {
+        if (selectionHighlight != null && !selectionHighlight.IsDisposed)
+            return selectionHighlight.IsReady;
+
+        // 编译/加载失败只试一次，之后静默退回自带实现，避免每帧刷日志
+        if (selectionHighlightUnavailable)
+            return false;
+
+        selectionHighlight = new SelectionHighlightPass(Viewport.Device);
+        if (!selectionHighlight.IsReady)
+        {
+            selectionHighlight.Dispose();
+            selectionHighlight = null;
+            selectionHighlightUnavailable = true;
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 把视口坐标转成世界落点，供素材库放置使用。
+    /// 依次考虑：地形网格 → 视口里已有的模型（物件/建筑表面）→ Y=0 平面 → 相机前方 20m。
+    /// </summary>
+    public bool TryGetPlacementPoint(int x, int y, out Vector3 worldPoint, out Vector3 worldNormal)
+    {
+        worldPoint = Vector3.Zero;
+        worldNormal = Vector3.Up;
+
+        if (camera == null || Viewport == null)
+            return false;
+
+        Ray ray = GetHitTestRay(x, y);
+        if (ray.Direction.LengthSquared() < 1e-8f || float.IsNaN(ray.Direction.X))
+            return false;
+
+        float bestDistance = float.MaxValue;
+        bool hasHit = false;
+
+        // 1) 地形网格（地形 chunk 由流式加载在别的线程增删，同样兜底）
+        try
+        {
+            TerrainEntity terrain = TerrainBrush.FindTerrain(this);
+            if (terrain?.Terrain?.TerrainData != null &&
+                TerrainBrush.TryHit(terrain, ray, out Vector3 _, out Vector3 terrainHit))
+            {
+                worldPoint = terrainHit;
+                bestDistance = GetRayDistance(ray, terrainHit);
+                hasHit = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogPlacementPickFailure(ex);
+        }
+
+        // 2) 视口里已有的模型（只测视口内 + 距离有限的代理），比地形近就用模型的表面
+        try
+        {
+            if (TryPickPlacementMesh(ray, bestDistance, out Vector3 meshPoint, out float meshDistance))
+            {
+                worldPoint = meshPoint;
+                bestDistance = meshDistance;
+                hasHit = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            // 拾取跑在 UI 线程、代理列表在渲染线程增删；这里兜底一次，最坏退回地形/地面落点，不能把编辑器崩掉
+            LogPlacementPickFailure(ex);
+        }
+
+        if (hasHit)
+        {
+            worldNormal = Vector3.Up;
+            return true;
+        }
+
+        // 3) 与 Y = 0 平面求交
+        if (Math.Abs(ray.Direction.Y) > 1e-5f)
+        {
+            float t = -ray.Position.Y / ray.Direction.Y;
+            if (t > 0.0f)
+            {
+                worldPoint = ray.Position + (ray.Direction * t);
+                worldNormal = Vector3.Up;
+                return true;
+            }
+        }
+
+        // 4) 最后退化：相机前方固定距离，至少保证用户能看到对象出现在视野里
+        worldPoint = camera.GetEyePt() + (ray.Direction * 20.0f);
+        worldNormal = Vector3.Up;
+        return true;
+    }
+
+    private static float GetRayDistance(Ray ray, Vector3 point)
+    {
+        return Math.Max(0.0f, Vector3.Dot(point - ray.Position, ray.Direction));
+    }
+
+    private bool placementPickFailureLogged;
+
+    private void LogPlacementPickFailure(Exception ex)
+    {
+        // 鼠标每次移动都会走这里，只记一次，避免刷日志
+        if (placementPickFailureLogged)
+            return;
+
+        placementPickFailureLogged = true;
+        Frosty.Core.App.Logger?.LogWarning($"[ObjectPalette] 放置拾取失败（已退回地形/地面落点）：{ex.Message}");
+    }
+
+    private BoundingFrustum? GetCameraFrustum()
+    {
+        if (camera is not LevelEditorCamera levelCamera)
+            return null;
+
+        Matrix worldMatrix = levelCamera.WorldMatrix;
+        return BoundingFrustum.FromCamera(worldMatrix.TranslationVector, worldMatrix.Backward, worldMatrix.Down,
+            levelCamera.FOV, levelCamera.GetNearClip(), levelCamera.GetFarClip(), levelCamera.AspectRatio);
+    }
+
+    private static bool IsOwnedBy(Entity entity, Entity root)
+    {
+        for (Entity cursor = entity; cursor != null; cursor = cursor.Parent)
+        {
+            if (ReferenceEquals(cursor, root))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 放置取点的「已有物体」命中：让放置能落在物件/建筑表面上，而不是永远落到地形或 Y=0。
+    ///
+    /// 性能上的取舍：
+    ///  - 只考虑 <see cref="ModelRenderProxy"/>（地形走地形通道，Sprite / Gizmo / 放置预览自己都不参与）；
+    ///  - 包围球粗筛：射线必须真的从旁边经过，且距离在 <see cref="PlacementPickMaxDistance"/> 以内；
+    ///  - 视锥剔除：只有当前视口里看得见的代理才可能被射中（鼠标射线本来就在视锥里）；
+    ///  - 包围盒求交拿到粗相位距离并排序，窄相位（逐三角形）只对真正可能更近的代理做，
+    ///    并且带时间预算 <see cref="PlacementPickTriangleBudgetMs"/>，超时退回包围盒结果，避免拖拽时掉帧。
+    /// </summary>
+    private bool TryPickPlacementMesh(Ray ray, float maxDistance, out Vector3 hitPoint, out float hitDistance)
+    {
+        hitPoint = Vector3.Zero;
+        hitDistance = float.MaxValue;
+
+        if (proxies.Count == 0)
+            return false;
+
+        float limit = Math.Min(maxDistance, PlacementPickMaxDistance);
+        if (limit <= 0.0f)
+            return false;
+
+        Entity previewRoot = (EditorProvider as LevelEditor)?.PlacementPreviewEntity;
+        BoundingFrustum? frustum = GetCameraFrustum();
+
+        List<PlacementPickCandidate> candidates = placementPickCandidates;
+        candidates.Clear();
+
+        // proxies 会在渲染线程的 Render() 里（renderTasks 执行 AddEntity / DeleteEntityFromRenderProxy 时）被增删，
+        // 而这里跑在 UI 线程的鼠标消息里。直接 foreach 会撞上「集合已修改」（切换素材时最明显），
+        // 所以先拷一份快照再遍历（List.ToArray 底层是数组拷贝，不会抛枚举异常）。
+        RenderProxy[] snapshot;
+        try
+        {
+            snapshot = proxies.ToArray();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        Vector3 rayOrigin = ray.Position;
+        Vector3 rayDirection = ray.Direction;
+
+        foreach (RenderProxy proxy in snapshot)
+        {
+            if (proxy is not ModelRenderProxy modelProxy || !modelProxy.CanHitTest)
+                continue;
+
+            // 隐藏的物件不参与命中
+            if (proxy.OwnerEntity != null && !proxy.OwnerEntity.IsVisible)
+                continue;
+
+            // 放置预览不能射到自己，否则预览会卡在上一帧的位置
+            if (previewRoot != null && IsOwnedBy(proxy.OwnerEntity, previewRoot))
+                continue;
+
+            // 包围球粗筛
+            BoundingSphere sphere = proxy.BoundingSphere;
+            Vector3 toCenter = sphere.Center - rayOrigin;
+            float along = Vector3.Dot(toCenter, rayDirection);
+            if (along + sphere.Radius < 0.0f)
+                continue;
+            if (along - sphere.Radius > limit)
+                continue;
+            if ((toCenter.LengthSquared() - (along * along)) > (sphere.Radius * sphere.Radius))
+                continue;
+
+            // 视口剔除
+            BoundingBox box = proxy.BoundingBox;
+            if (frustum.HasValue && !frustum.Value.Intersects(ref box))
+                continue;
+
+            if (!ray.Intersects(ref box, out Vector3 boxHit))
+                continue;
+
+            float near = Vector3.Dot(boxHit - rayOrigin, rayDirection);
+            if (near <= 0.01f || near > limit)
+                continue;   // 相机就在盒子里 / 或者太远
+
+            candidates.Add(new PlacementPickCandidate()
+            {
+                Proxy = modelProxy,
+                NearDistance = near,
+                BoxPoint = rayOrigin + (rayDirection * near),
+            });
+        }
+
+        if (candidates.Count == 0)
+            return false;
+
+        candidates.Sort((a, b) => a.NearDistance.CompareTo(b.NearDistance));
+
+        // 窄相位：从最近的包围盒开始做三角形求交。
+        // 一旦已知命中比下一个候选的入射距离还近，后面的都不可能更近，可以安全停下。
+        float bestDistance = limit;
+        Vector3 bestPoint = Vector3.Zero;
+        bool hasTriangleHit = false;
+        float fallbackDistance = float.MaxValue;
+        Vector3 fallbackPoint = Vector3.Zero;
+
+        Stopwatch budget = Stopwatch.StartNew();
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            PlacementPickCandidate candidate = candidates[i];
+            if (candidate.NearDistance >= bestDistance)
+                break;
+
+            if (candidate.NearDistance < fallbackDistance)
+            {
+                fallbackDistance = candidate.NearDistance;
+                fallbackPoint = candidate.BoxPoint;
+            }
+
+            if (budget.Elapsed.TotalMilliseconds > PlacementPickTriangleBudgetMs)
+                break;
+
+            bool hit;
+            Vector3 point;
+            try
+            {
+                hit = candidate.Proxy.HitTest(ray, out point);
+            }
+            catch (Exception)
+            {
+                hit = false;
+                point = Vector3.Zero;
+            }
+
+            if (!hit)
+                continue;
+
+            float distance = GetRayDistance(ray, point);
+            if (distance >= bestDistance)
+                continue;
+
+            bestDistance = distance;
+            bestPoint = point;
+            hasTriangleHit = true;
+        }
+
+        if (hasTriangleHit)
+        {
+            hitPoint = bestPoint;
+            hitDistance = bestDistance;
+            return true;
+        }
+
+        // 三角形阶段没打中/超时：退回最近一个包围盒交点，至少保证预览贴在物体的大致表面上
+        if (fallbackDistance < float.MaxValue)
+        {
+            hitPoint = fallbackPoint;
+            hitDistance = fallbackDistance;
+            return true;
+        }
+
+        return false;
     }
 
     private Ray GetHitTestRay(int x, int y)

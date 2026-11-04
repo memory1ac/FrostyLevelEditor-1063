@@ -39,12 +39,29 @@ public partial class MeshView : UserControl
     /// </summary>
     private CopyDirection copyDirection = CopyDirection.ZAxisAdd;
 
+    private static readonly string[] ViewModeItems =
+    [
+        "纯色",
+        "Default Lit",
+        "Wireframe",
+        "BaseColor",
+        "SpecularColor",
+        "Normals",
+        "MaterialAO",
+        "Smoothness",
+        "Metallic",
+        "Reflectance"
+    ];
+
     public MeshView()
     {
         InitializeComponent();
 
         HotKey.KeyDownEvent += HotKey_KeyDownEvent;
         HavokPhysicsData.PendingCommitChanged += OnPendingCommitChanged;
+
+        ComboBox_ViewMode.ItemsSource = ViewModeItems;
+        ComboBox_ViewMode.SelectedIndex = Math.Min(LevelEditorRenderingOptions.ViewModeIndex, ViewModeItems.Length - 1);
 
         // 初始化地形笔刷 UI
         if (CheckBox_TerrainEditMode != null)
@@ -55,6 +72,14 @@ public partial class MeshView : UserControl
     private void OnPendingCommitChanged()
     {
         Dispatcher.InvokeAsync(UpdateWriteHavokButtonState);
+    }
+
+    private void ComboBox_ViewMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ComboBox_ViewMode.SelectedIndex >= 0)
+        {
+            LevelEditorRenderingOptions.ViewModeIndex = ComboBox_ViewMode.SelectedIndex;
+        }
     }
 
     /// <summary>

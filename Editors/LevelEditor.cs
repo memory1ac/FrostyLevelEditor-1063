@@ -393,7 +393,7 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
         List<ToolbarItem> toolbarItems = base.RegisterToolbarItems();
         toolbarItems.Add(new DockingToolbarItem("", "Show/Hide layers tab", "Images/Layers.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new LayersViewModel(this))), DockManager, "UID_LevelEditor_Layers"));
         toolbarItems.Add(new DockingToolbarItem("", "Show/Hide instances tab", "Images/Instances.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new InstancesViewModel(this, selectedEntity))), DockManager, "UID_LevelEditor_Instances"));
-        toolbarItems.Add(new DockingToolbarItem("", "Show/Hide toolbox", "Images/Toolbox.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new InstancesViewModel(this, selectedEntity))), DockManager, "UID_LevelEditor_Toolbox"));
+        toolbarItems.Add(new DockingToolbarItem("", "Show/Hide object palette", "Images/Toolbox.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new ObjectPaletteViewModel(this))), DockManager, "UID_LevelEditor_Toolbox"));
         toolbarItems.Add(new DockingToolbarItem("", "Show/Hide properties tab", "Images/Properties.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new PropertiesViewModel(this, selectedEntity))), DockManager, "UID_LevelEditor_Properties"));
         toolbarItems.Add(new DockingToolbarItem("", "Show/Hide terrain layers tab", "Images/Terrain.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new TerrainLayersViewModel(this))), DockManager, "UID_LevelEditor_TerrainLayers"));
         toolbarItems.Add(new DockingToolbarItem("", "Show/Hide timeline editor", "Images/Timeline.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new TimelineViewModel(this))), DockManager, "UID_LevelEditor_Timeline"));
@@ -401,6 +401,10 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
         //toolbarItems.Add(new RegularToolbarItem("", "Export all visible instances to XML", "LevelEditorPlugin/Images/XMLFile.png", new RelayCommand((o) => { ExportLevelAsXML(); })));
         toolbarItems.Add(new DividerToolbarItem());
         toolbarItems.Add(ViewModeToolbarItem.Create());
+
+        // Havok 碰撞体叠加：按下后把每个模型在 ObjectBlueprint 里引用的 Havok 物理 res 画到关卡上。
+        // 名字里带 cluster 的破坏碎块（碎片）会跳过，只显示实体碰撞用的那份。
+        HavokOverlayToolbar.Add(toolbarItems, this, logger);
 
         return toolbarItems;
     }
@@ -671,6 +675,10 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
     }
     public override void Closed()
     {
+        // 关闭编辑器时顺手清掉放置预览，避免蓝图引用跟着泄露
+        pendingPlacement = null;
+        DestroyPlacementPreview();
+
         DockManager.SaveToConfig("LevelEditor");
         viewport.Shutdown();
         base.Closed();
@@ -678,10 +686,24 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
 
     public bool IsValidDropSource(IDataObject draggedData)
     {
+        if (draggedData == null)
+            return false;
+
+        if (draggedData.GetDataPresent(typeof(ObjectPaletteDropData)))
+        {
+            ObjectPaletteDropData dropData = (ObjectPaletteDropData)draggedData.GetData(typeof(ObjectPaletteDropData));
+            if (dropData?.Entry != null)
+                return true;
+        }
+
         if (draggedData.GetDataPresent(typeof(DataExplorerDropData)))
         {
             var dropData = (DataExplorerDropData)draggedData.GetData(typeof(DataExplorerDropData));
+            if (dropData?.Entry == null)
+                return false;
             if (dropData.Entry.Type == "ObjectBlueprint")
+                return true;
+            if (dropData.Entry.Type == "SpatialPrefabBlueprint")
                 return true;
         }
 
@@ -690,15 +712,278 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
 
     public void ProcessDrop(IDataObject draggedData, System.Windows.Point dropPoint)
     {
-        if (draggedData.GetDataPresent(typeof(DataExplorerDropData)))
+        if (draggedData == null)
+            return;
+
+        List<ObjectPaletteEntry> entries = [];
+
+        if (draggedData.GetDataPresent(typeof(ObjectPaletteDropData)))
+        {
+            ObjectPaletteDropData dropData = (ObjectPaletteDropData)draggedData.GetData(typeof(ObjectPaletteDropData));
+            if (dropData?.Entry != null)
+                entries.Add(dropData.Entry);
+        }
+        else if (draggedData.GetDataPresent(typeof(DataExplorerDropData)))
         {
             var dropData = (DataExplorerDropData)draggedData.GetData(typeof(DataExplorerDropData));
-            var asset = App.AssetManager.GetEbx(dropData.Entry);
+            entries.AddRange(ResolveDataExplorerEntries(dropData?.Entry));
+        }
 
-            var refObjEntity = SelectedLayer.Entity;
-            var layerEntity = SelectedLayer;
+        if (entries.Count == 0)
+            return;
+
+        if (!screen.TryGetPlacementPoint((int)dropPoint.X, (int)dropPoint.Y, out SharpDX.Vector3 worldPoint, out _))
+        {
+            LastPlacementStatus = "无法在视口里确定落点";
+            return;
+        }
+
+        foreach (ObjectPaletteEntry entry in entries)
+            PlaceEntry(entry, worldPoint);
+    }
+
+    /// <summary>
+    /// 数据浏览器拖进来的可能是 SpatialPrefabBlueprint，需要拍平到它引用的 ObjectBlueprint 才能放置。
+    /// </summary>
+    private List<ObjectPaletteEntry> ResolveDataExplorerEntries(FrostySdk.Managers.EbxAssetEntry assetEntry)
+    {
+        List<ObjectPaletteEntry> result = [];
+        if (assetEntry == null)
+            return result;
+
+        LevelBlueprintIndex index = GetOrBuildBlueprintIndex();
+
+        // 索引里已有的直接复用
+        ObjectPaletteEntry existing = index?.Entries.FirstOrDefault(e => e.FileGuid == assetEntry.Guid);
+        if (existing != null)
+        {
+            result.Add(existing);
+            return result;
+        }
+
+        if (assetEntry.Type == "ObjectBlueprint")
+        {
+            result.Add(new ObjectPaletteEntry() { Entry = assetEntry, Sources = PaletteSourceFlags.Bundle });
+            return result;
+        }
+
+        if (assetEntry.Type == "SpatialPrefabBlueprint" && index != null)
+        {
+            foreach (FrostySdk.Managers.EbxAssetEntry entry in index.FlattenPrefabBlueprints(assetEntry))
+                result.Add(new ObjectPaletteEntry() { Entry = entry, Sources = PaletteSourceFlags.SpatialPrefab });
+        }
+
+        return result;
+    }
+
+    #region -- Object Palette 放置 --
+
+    private LevelBlueprintIndex blueprintIndex;
+    private ObjectPaletteEntry pendingPlacement;
+    private SubWorldIndexNode placementTargetSubWorld;
+    private PlacementPreview placementPreview;
+    private Window placementWindow;
+    private string lastPlacementStatus = "";
+
+    /// <summary>预览跟随鼠标的像素阈值：小于这个位移就不重新做射线（性能）</summary>
+    private const int PlacementPreviewMoveThreshold = 2;
+    private const int PlacementPreviewInvalidPosition = -100000;
+    private int lastPlacementPreviewX = PlacementPreviewInvalidPosition;
+    private int lastPlacementPreviewY = PlacementPreviewInvalidPosition;
+
+    /// <summary>关卡素材索引（首次访问时构建）</summary>
+    public LevelBlueprintIndex BlueprintIndex => blueprintIndex;
+
+    /// <summary>索引重建完成</summary>
+    public event EventHandler BlueprintIndexChanged;
+
+    /// <summary>放置状态变化（进入/退出放置模式、放置结果）</summary>
+    public event EventHandler PlacementStateChanged;
+
+    /// <summary>等待点击放置的蓝图（null 表示不在放置模式）</summary>
+    public ObjectPaletteEntry PendingPlacement => pendingPlacement;
+
+    /// <summary>当前放置预览的根实体（没有预览时为 null），射线拾取时要排除它</summary>
+    public LevelEditorPlugin.Entities.Entity PlacementPreviewEntity => placementPreview?.RootEntity;
+
+    /// <summary>
+    /// 面板里手动指定（覆盖自动解析）的放置目标 SubWorld；null = Auto，按名字规则自动解析。
+    /// 拖拽放置与点击放置都会遵守这个值。
+    /// </summary>
+    public SubWorldIndexNode PlacementTargetSubWorld
+    {
+        get => placementTargetSubWorld;
+        set => placementTargetSubWorld = value;
+    }
+
+    /// <summary>最近一次放置的结果描述，供状态栏显示</summary>
+    public string LastPlacementStatus
+    {
+        get => lastPlacementStatus;
+        private set
+        {
+            lastPlacementStatus = value;
+            PlacementStateChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    public LevelBlueprintIndex GetOrBuildBlueprintIndex()
+    {
+        if (blueprintIndex != null)
+            return blueprintIndex;
+
+        FrostyTaskWindow.Show("Scanning level assets", "", task => RebuildBlueprintIndex(task));
+        return blueprintIndex;
+    }
+
+    public void RebuildBlueprintIndex(FrostyTaskWindow task)
+    {
+        blueprintIndex = LevelBlueprintIndex.Build(this, task);
+        BlueprintIndexChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 进入「点击放置」模式：鼠标在视口里移动时显示跟随光标的模型预览，
+    /// 左键点击落点才真正写 EBX；Esc 或再次点击放置按钮取消。
+    /// </summary>
+    public void BeginPlacement(ObjectPaletteEntry entry)
+    {
+        if (entry == null)
+            return;
+
+        // 换素材时先把上一个预览清掉（预览是懒创建的，等鼠标进视口再建）
+        DestroyPlacementPreview();
+        lastPlacementPreviewX = PlacementPreviewInvalidPosition;
+        lastPlacementPreviewY = PlacementPreviewInvalidPosition;
+
+        pendingPlacement = entry;
+        LastPlacementStatus = $"移动鼠标预览，左键点击放置 {entry.DisplayName}（Esc 取消）";
+
+        if (placementWindow == null)
+        {
+            placementWindow = Window.GetWindow(this);
+            if (placementWindow != null)
+                placementWindow.PreviewKeyDown += PlacementWindow_PreviewKeyDown;
+        }
+
+        PlacementStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void CancelPlacement()
+    {
+        CancelPlacement(destroyPreview: true);
+    }
+
+    private void CancelPlacement(bool destroyPreview)
+    {
+        if (pendingPlacement == null)
+            return;
+
+        pendingPlacement = null;
+        if (destroyPreview)
+            DestroyPlacementPreview();
+
+        LastPlacementStatus = "已取消放置";
+
+        if (placementWindow != null)
+        {
+            placementWindow.PreviewKeyDown -= PlacementWindow_PreviewKeyDown;
+            placementWindow = null;
+        }
+
+        PlacementStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 放置模式下鼠标在视口里移动（由 LevelEditorScreen.MouseMove 调用）：
+    /// 用射线取地面/地形/已有模型的落点，把预览模型挪过去。
+    /// </summary>
+    public void UpdatePlacementPreview(int x, int y)
+    {
+        if (pendingPlacement == null || screen == null)
+            return;
+
+        // 鼠标只挪了一两个像素就不用重新做全场景射线，省点开销
+        if (placementPreview != null &&
+            Math.Abs(x - lastPlacementPreviewX) < PlacementPreviewMoveThreshold &&
+            Math.Abs(y - lastPlacementPreviewY) < PlacementPreviewMoveThreshold)
+        {
+            return;
+        }
+
+        if (!screen.TryGetPlacementPoint(x, y, out SharpDX.Vector3 worldPoint, out _))
+            return;
+
+        lastPlacementPreviewX = x;
+        lastPlacementPreviewY = y;
+
+        if (placementPreview == null || !placementPreview.IsValid)
+        {
+            DestroyPlacementPreview();
+            placementPreview = PlacementPreview.Create(this, pendingPlacement);
+        }
+
+        placementPreview?.MoveTo(worldPoint);
+    }
+
+    private void DestroyPlacementPreview()
+    {
+        if (placementPreview == null)
+            return;
+
+        placementPreview.Dispose();
+        placementPreview = null;
+    }
+
+    /// <summary>视口点击放置（由 LevelEditorScreen 在 MouseDown 里调用）</summary>
+    public bool PlaceAt(int x, int y)
+    {
+        if (pendingPlacement == null || screen == null)
+            return false;
+
+        ObjectPaletteEntry entry = pendingPlacement;
+
+        // 先退出放置模式，但预览先留着：等真正生成实体后再销毁，
+        // 免得同一个蓝图被「卸载 → 重新加载」一次，也能避免闪一下空白。
+        CancelPlacement(destroyPreview: false);
+
+        try
+        {
+            if (!screen.TryGetPlacementPoint(x, y, out SharpDX.Vector3 worldPoint, out _))
+            {
+                LastPlacementStatus = "无法在视口里确定落点";
+                return true;
+            }
+
+            PlaceEntry(entry, worldPoint);
+        }
+        finally
+        {
+            DestroyPlacementPreview();
+        }
+
+        return true;
+    }
+
+    private void PlaceEntry(ObjectPaletteEntry entry, SharpDX.Vector3 worldPoint)
+    {
+        PlacementResult result = LevelPlacementService.Place(this, GetOrBuildBlueprintIndex(), entry, worldPoint, placementTargetSubWorld);
+        LastPlacementStatus = result.Message;
+
+        if (!result.Success)
+            App.Logger?.LogWarning($"[ObjectPalette] 放置失败：{result.Message}");
+    }
+
+    private void PlacementWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape && pendingPlacement != null)
+        {
+            CancelPlacement();
+            e.Handled = true;
+        }
+    }
+
+    #endregion
 
     protected override void Initialize()
     {
@@ -718,7 +1003,7 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
         // 让Layers在Instance后加载
         DockManager.AddItemOnLoad(new InstancesViewModel(this, null));
         DockManager.AddItemOnLoad(new LayersViewModel(this));
-        DockManager.AddItemOnLoad(new LevelEditorToolboxViewModel());
+        DockManager.AddItemOnLoad(new ObjectPaletteViewModel(this));
         DockManager.AddItemOnLoad(new PropertiesViewModel(this, editingWorld));
         DockManager.AddItemOnLoad(new TimelineViewModel(this));
         DockManager.AddItemOnLoad(new TerrainLayersViewModel(this));
@@ -727,6 +1012,9 @@ public class LevelEditor : SpatialEditor, IDragDropTargetProvider
 
     private EbxAssetEntry levelEntry;
     private string levelEntryName;
+
+    /// <summary>关卡 LevelData 的 asset entry（素材索引在 world 还没建好时会用到）</summary>
+    public EbxAssetEntry LevelAssetEntry => levelEntry ?? (AssetEntry as EbxAssetEntry);
 
     private void LoadLevel(FrostyTaskWindow task)
     {

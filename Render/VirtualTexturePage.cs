@@ -101,10 +101,13 @@ public static class VirtualTexturePage
         {
             CancelSession();
             DisposeAtlas();
+            samplePermutation = null;
             source = terrain;
             baked = false;
             bakeFailed = false;
             BoundSections.Clear();
+            VirtualSections.Clear();
+            DiscoveredMeshes.Clear();
         }
         layerColors = colors ?? [];
         terrainWorld = world;

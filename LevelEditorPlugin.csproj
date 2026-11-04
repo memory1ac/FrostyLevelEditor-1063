@@ -87,6 +87,8 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 		<EmbeddedResource Include="Content\**\*.*" />
+		<!-- Havok 碰撞体叠加层用的 BF1 hkClass 布局表 -->
+		<EmbeddedResource Include="HavokLayout.bf1.json" />
 	</ItemGroup>
 
 	<Target Name="CopyToFrostyEditorPlugins" AfterTargets="AfterBuild">

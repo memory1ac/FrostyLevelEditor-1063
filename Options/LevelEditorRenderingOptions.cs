@@ -12,6 +12,8 @@ namespace LevelEditorPlugin.Options;
 public static class LevelEditorRenderingOptions
 {
     private const string ConfigKeyViewMode = "LevelEditorViewMode";
+    private const string ConfigKeyShowHavok = "LevelEditorShowHavokCollision";
+    private const string ConfigKeyHavokPieceColors = "LevelEditorHavokPieceColors";
 
     public static readonly IList<string> ViewModeNames =
     [
@@ -38,6 +40,34 @@ public static class LevelEditorRenderingOptions
         set
         {
             Config.Add(ConfigKeyViewMode, value, ConfigScope.Game);
+            Config.Save();
+        }
+    }
+
+    /// <summary>
+    /// 是否在关卡视口里叠加显示 Havok 物理碰撞体（和 Havok 编辑器里画的多边形一致）。
+    /// 数据取自 ObjectBlueprint 引用的 HavokPhysicsData res，名字里带 cluster 的破坏碎块会被跳过。
+    /// </summary>
+    public static bool ShowHavokCollision
+    {
+        get => Config.Get<bool>(ConfigKeyShowHavok, false, ConfigScope.Game);
+        set
+        {
+            Config.Add(ConfigKeyShowHavok, value, ConfigScope.Game);
+            Config.Save();
+        }
+    }
+
+    /// <summary>
+    /// Havok 叠加层是否按分块着色（默认开）：同一个碰撞 res 里的每个分块各给一种稳定颜色，
+    /// 便于看清复合形状的分块结构。关掉则统一成浅蓝色，和 Havok 编辑器默认外观一致。
+    /// </summary>
+    public static bool HavokPieceColors
+    {
+        get => Config.Get<bool>(ConfigKeyHavokPieceColors, true, ConfigScope.Game);
+        set
+        {
+            Config.Add(ConfigKeyHavokPieceColors, value, ConfigScope.Game);
             Config.Save();
         }
     }

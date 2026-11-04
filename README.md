@@ -67,3 +67,31 @@ The project references `FrostyCore`, `FrostySdk`, `FrostyControls`, `FrostyHash`
 ### Contributing
 
 Forks are welcome. This repository may not merge every external change. Maintain your own fork when you need custom behavior.
+
+---
+
+## 更新日志 / Changelog
+
+### 0.2
+
+中文：
+
+- 新增**对象面板（Object Palette）**：索引关卡内的 SubWorld、WorldPart 与可放置的 ObjectBlueprint，树形浏览并支持拖拽放置。
+- 新增**关卡放置服务**：自动解析目标 SubWorld / WorldPart，放置时生成实时幽灵预览，拾取点支持地形、网格与包围盒射线检测，并接入撤销栈。
+- 新增**屏幕空间选区描边**：原版 `SelectionOutline` 的硬编码深度阈值在关卡相机下不会触发，改用插件自带的 `SelectionHighlight.hlsl` 后处理（内嵌并自动释放），同时补充了纯原版 1.0.6.3 的选区深度兜底渲染。
+- 新增**Havok 碰撞体叠加层**：纯 .NET Havok 解析器 + D3D11 渲染，按帧预算解析，支持工具栏开关与重新解析；hkClass 布局表 `HavokLayout.bf1.json` 内嵌于 DLL，**不再依赖任何外部 Havok 插件**。
+- MeshView 增加 **ViewMode** 切换。
+- 资源（shader / gizmo / 贴图）继续内嵌进 DLL，编辑器启动时自动释放。
+
+English:
+
+- Added the **Object Palette**: indexes SubWorlds, WorldParts and placeable ObjectBlueprints in the level, browse them as a tree and drag them into the viewport.
+- Added the **level placement service**: resolves the target SubWorld / WorldPart automatically, shows a live ghost preview, picks points via terrain / mesh / bounding-box raycasts and integrates with the undo stack.
+- Added **screen-space selection outlining**: vanilla `SelectionOutline` uses hardcoded depth thresholds that never trigger with the level editor camera, so the plugin now ships its own `SelectionHighlight.hlsl` post-process (embedded and auto-extracted), plus a selection-depth fallback for unmodified 1.0.6.3.
+- Added the **Havok collision overlay**: pure .NET Havok parser plus D3D11 rendering with frame-budgeted parsing, a toolbar toggle and a re-parse action. The `HavokLayout.bf1.json` hkClass layout table is embedded in the DLL, so **no external Havok plugin is required**.
+- Added a **ViewMode** switcher to MeshView.
+- All resources (shaders / gizmos / textures) stay embedded in the DLL and are extracted when the editor starts.
+
+### 0.1
+
+- First public release.

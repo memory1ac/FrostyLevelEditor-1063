@@ -73,7 +73,7 @@ public class SpatialPrefabEditor : SpatialEditor
 
     public override List<ToolbarItem> RegisterToolbarItems()
     {
-        return
+        List<ToolbarItem> items =
         [
             new DockingToolbarItem("", "Show/Hide layers tab", "Images/Layers.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new LayersViewModel(this))), DockManager, "UID_LevelEditor_Layers"),
             new DockingToolbarItem("", "Show/Hide instances tab", "Images/Instances.png", new RelayCommand((o) => DockManager.AddItem(((DockingToolbarItem)o).Location, new InstancesViewModel(this, selectedEntity))), DockManager, "UID_LevelEditor_Instances"),
@@ -86,6 +86,11 @@ public class SpatialPrefabEditor : SpatialEditor
             //new RegularToolbarItem("", "Capture thumbnail preview", "LevelEditorPlugin/Images/CaptureThumbnail.png", new RelayCommand((o) => { CaptureThumbnail(viewport); })),
             //new ToggleToolbarItem("", "Show/Hide thumbnail safezone", "LevelEditorPlugin/Images/ThumbnailSafezone.png", false, new RelayCommand((o) => { ShowThumbnailSafeZone(thumbnailBorder.Visibility == Visibility.Collapsed, viewport); }))
         ];
+
+        // SubWorld（SpatialPrefabBlueprint）走的就是这个编辑器，Havok 叠加开关也要有
+        HavokOverlayToolbar.Add(items, this, logger);
+
+        return items;
     }
 
     public override void OnApplyTemplate()

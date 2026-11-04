@@ -21,6 +21,9 @@ public static class MeshUtil
     /// </summary>
     public static event Action LayerReloaded;
 
+    /// <summary>通知界面层刷新（实体增删后调用）</summary>
+    public static void NotifyLayerReloaded() => LayerReloaded?.Invoke();
+
     /// <summary>
     /// 复制选中的网格组件到当前蓝图中 
     /// </summary>

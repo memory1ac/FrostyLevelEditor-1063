@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "source": "Battlefield 1 (bf1_dump_SCY.exe) hkClass 注册 stub，通过 IDA MCP 读取 sub_141B4A390 的 member table",
+  "note": "offset 与 64 位运行期 hkClass 完全一致；packfile 内的字段偏移也相同（运行期指针宽度与 packfile 指针宽度一致）。hkArray/hkRelArray 元素数量需要按指针宽度换算。",
+  "classes": [
+    {
+      "name": "hkRootLevelContainer",
+      "parent": null,
+      "size": 16,
+      "members": [
+        { "name": "namedVariants", "offset": 0, "type": "hkArray<hkNamedVariant>", "size": 4, "isArray": true, "elementClass": "hkNamedVariant" }
+      ]
+    },
+    {
+      "name": "HavokPhysicsContainer",
+      "parent": null,
+      "size": 32,
+      "members": [
+        { "name": "shapes", "offset": 16, "type": "hkArray<hkReferencedObject*>", "size": 4, "isArray": true, "isPointerArray": true }
+      ]
+    },
+    {
+      "name": "hknpShape",
+      "parent": null,
+      "size": 48,
+      "members": [
+        { "name": "flags", "offset": 16, "type": "unsigned short", "size": 2, "enum": "hknpShape::Flags" },
+        { "name": "numShapeKeyBits", "offset": 18, "type": "unsigned char", "size": 1 },
+        { "name": "dispatchType", "offset": 19, "type": "hkEnum", "size": 1, "enum": "hknpShapeType::Enum" },
+        { "name": "convexRadius", "offset": 20, "type": "float", "size": 4 },
+        { "name": "userData", "offset": 24, "type": "unsigned int", "size": 4 },
+        { "name": "properties", "offset": 32, "type": "hkRefCountedProperties*", "size": 8, "isPointer": true }
+      ]
+    },
+    {
+      "name": "hknpCompoundShape",
+      "parent": "hknpShape",
+      "size": 192,
+      "members": [
+        { "name": "instances", "offset": 96, "type": "hkArray<hknpShapeInstance>", "size": 4, "isArray": true, "elementClass": "hknpShapeInstance" },
+        { "name": "aabb", "offset": 128, "type": "hkAabb", "size": 32 },
+        { "name": "isMutable", "offset": 160, "type": "bool", "size": 1 },
+        { "name": "mutationSignals", "offset": 168, "type": "hkFlags<unsigned int>", "size": 4 }
+      ]
+    },
+    {
+      "name": "hknpConvexShape",
+      "parent": "hknpShape",
+      "size": 64,
+      "members": [
+        { "name": "vertices", "offset": 48, "type": "hkRelArray<hkVector4>", "size": 4, "isRelArray": true }
+      ]
+    },
+    {
+      "name": "hknpConvexPolytopeShape",
+      "parent": "hknpConvexShape",
+      "size": 80,
+      "members": [
+        { "name": "planes", "offset": 64, "type": "hkRelArray<hkVector4>", "size": 4, "isRelArray": true },
+        { "name": "faces", "offset": 68, "type": "hkRelArray<hknpConvexPolytopeShape::Face>", "size": 4, "isRelArray": true },
+        { "name": "indices", "offset": 72, "type": "hkRelArray<unsigned char>", "size": 4, "isRelArray": true }
+      ]
+    },
+    {
+      "name": "hknpSphereShape",
+      "parent": "hknpConvexShape",
+      "size": 64,
+      "members": []
+    },
+    {
+      "name": "hknpCapsuleShape",
+      "parent": "hknpConvexShape",
+      "size": 112,
+      "members": [
+        { "name": "a", "offset": 80, "type": "hkVector4", "size": 16 },
+        { "name": "b", "offset": 96, "type": "hkVector4", "size": 16 }
+      ]
+    },
+    {
+      "name": "hknpStaticCompoundShape",
+      "parent": "hknpCompoundShape",
+      "size": 208,
+      "members": [
+        { "name": "boundingVolumeData", "offset": 192, "type": "hknpStaticCompoundShapeData*", "size": 8, "isPointer": true }
+      ]
+    },
+    {
+      "name": "hknpStaticCompoundShapeData",
+      "parent": null,
+      "size": 64,
+      "members": [
+        { "name": "aabbTree", "offset": 16, "type": "hkcdStaticTree::Tree", "size": 48 }
+      ]
+    },
+    {
+      "name": "hknpShapeInstance",
+      "parent": null,
+      "size": 128,
+      "members": [
+        { "name": "transform", "offset": 0, "type": "hkTransform", "size": 64 },
+        { "name": "scale", "offset": 64, "type": "hkVector4", "size": 16 },
+        { "name": "shape", "offset": 80, "type": "hknpShape*", "size": 8, "isPointer": true },
+        { "name": "shapeTag", "offset": 88, "type": "unsigned short", "size": 2 },
+        { "name": "destructionTag", "offset": 90, "type": "unsigned short", "size": 2 },
+        { "name": "padding", "offset": 92, "type": "unsigned char[30]", "size": 30, "arraySize": 30 }
+      ]
+    },
+    {
+      "name": "hkRefCountedProperties",
+      "parent": null,
+      "size": 16,
+      "members": [
+        { "name": "entries", "offset": 0, "type": "hkRelArray<hkRefCountedProperties::Entry>", "size": 4, "isRelArray": true }
+      ]
+    },
+    {
+      "name": "hknpShapeMassProperties",
+      "parent": null,
+      "size": 48,
+      "members": [
+        { "name": "compressedMassProperties", "offset": 16, "type": "hknpShapeMassProperties::CompressedMassProperties", "size": 32 }
+      ]
+    }
+  ],
+  "structs": {
+    "hkcdStaticTree::Tree": {
+      "note": "从 cratewood_02 数据验证：nodes 数组指针 @+0x00（size @+0x08，capacity @+0x0C，高位置位表示已排序），domain @+0x10",
+      "size": 48,
+      "members": [
+        { "name": "nodes", "offset": 0, "type": "hkArray<hkcdStaticTree::DefaultTreeAggregate>", "size": 8 },
+        { "name": "domain", "offset": 16, "type": "hkAabb", "size": 32 }
+      ]
+    },
+    "hkcdStaticTree::DefaultTreeAggregate": {
+      "note": "8 字节节点，坐标用 codec3Axis6 压缩；BF1 的节点数据未通过校验时编辑器只画 domain 盒",
+      "size": 8,
+      "members": []
+    },
+    "hknpConvexPolytopeShape::Face": {
+      "size": 4,
+      "members": [
+        { "name": "minHalfAngle", "offset": 0, "type": "unsigned char", "size": 1 },
+        { "name": "numIndices", "offset": 1, "type": "unsigned char", "size": 1 },
+        { "name": "firstIndex", "offset": 2, "type": "unsigned short", "size": 2 }
+      ]
+    }
+  },
+  "flags": {
+    "hknpShape::Flags": {
+      "MIRRORED": 4096
+    }
+  }
+}
