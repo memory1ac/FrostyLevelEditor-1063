@@ -314,7 +314,7 @@ public static class TerrainBrush
                 SampleWorldXZ(fine, x, y, out float wx, out float wz);
                 if (!WorldToSample(coarse, wx, wz, out float csx, out float csy))
                     continue;
-                fineH[y * dim + x] = SampleBilinear(coarseH, coarseDim, csx, csy);
+                fineH[y * dim + x] = SampleBilinearHeights(coarseH, coarseDim, csx, csy);
             }
         }
     }
@@ -421,7 +421,26 @@ public static class TerrainBrush
         return sx >= -0.51f && sy >= -0.51f && sx <= dim - 1 + 0.51f && sy <= dim - 1 + 0.51f;
     }
 
-    private static float SampleBilinear(float[] heights, int dim, float sx, float sy)
+    /// <summary>
+    /// 把局部空间 (wx, wz) 换算成 chunk 的样本坐标（含边界样本），供地形笔刷光标贴地采样。
+    /// </summary>
+    internal static bool TryGetSampleCoords(TerrainChunkRenderable chunk, float wx, float wz, out float sx, out float sy)
+    {
+        GetSpacing(chunk, out float spacing, out int border);
+        if (spacing <= 1e-8f)
+        {
+            sx = sy = 0.0f;
+            return false;
+        }
+
+        sx = (wx - chunk.CoverageMinX) / spacing + border;
+        sy = (wz - chunk.CoverageMinZ) / spacing + border;
+
+        int dim = chunk.Dim;
+        return sx >= -0.51f && sy >= -0.51f && sx <= dim - 1 + 0.51f && sy <= dim - 1 + 0.51f;
+    }
+
+    internal static float SampleBilinearHeights(float[] heights, int dim, float sx, float sy)
     {
         if (sx < 0)
             sx = 0;

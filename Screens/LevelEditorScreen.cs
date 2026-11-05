@@ -649,6 +649,17 @@ public class LevelEditorScreen : DeferredRenderScreen2
     private bool gizmoDragActive;
     private bool terrainPainting;
     private readonly Stopwatch terrainPaintClock = new Stopwatch();
+
+    // 地形笔刷光标：鼠标在地形上时的投影圈（见 Render/TerrainBrushCursor.cs）
+    private TerrainBrushCursor terrainBrushCursor;
+    private bool terrainBrushCursorUnavailable;
+    private TerrainEntity terrainBrushCursorTerrain;
+    private bool terrainCursorValid;
+    private int terrainCursorX;
+    private int terrainCursorY;
+    private bool terrainCursorHitCached;
+    private Vector3 terrainCursorHitWorld;
+    private Matrix terrainCursorHitViewProj;
     private Vector3 gizmoDragScale;
     private Quaternion gizmoDragRotation;
     private Vector3 gizmoDragTranslation;
@@ -880,6 +891,12 @@ public class LevelEditorScreen : DeferredRenderScreen2
         havokOverlay = null;
         havokOverlayDirty = true;
         lastHavokProxyCount = -1;
+
+        terrainBrushCursor?.Dispose();
+        terrainBrushCursor = null;
+        terrainBrushCursorUnavailable = false;
+        terrainBrushCursorTerrain = null;
+        terrainCursorHitCached = false;
 
         foreach (RenderProxy proxy in proxies)
             proxy.Dispose();
@@ -1193,6 +1210,8 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
         if (TerrainEditState.IsTerrainEditModeEnabled)
         {
+            UpdateTerrainCursor(x, y);
+
             if (button == MouseButton.Left)
             {
                 terrainPainting = true;
@@ -1303,6 +1322,8 @@ public class LevelEditorScreen : DeferredRenderScreen2
 
         if (TerrainEditState.IsTerrainEditModeEnabled)
         {
+            UpdateTerrainCursor(x, y);
+
             if (terrainPainting)
             {
                 float dt = (float)terrainPaintClock.Elapsed.TotalSeconds;
@@ -1333,6 +1354,150 @@ public class LevelEditorScreen : DeferredRenderScreen2
         {
             ApplyGizmoToSelection(commit: false, rotating: translateGizmo.IsRotating);
         }
+    }
+
+    public override void MouseLeave()
+    {
+        base.MouseLeave();
+        terrainCursorValid = false;
+        terrainCursorHitCached = false;
+        terrainBrushCursor?.Clear();
+    }
+
+    public override void MouseScroll(int delta)
+    {
+        base.MouseScroll(delta);
+        // 滚轮会前后移动摄像机，射线落点必然变化
+        terrainCursorHitCached = false;
+    }
+
+    /// <summary>记录光标位置，标记下一帧需要重新求交（圈的实际几何在渲染线程按地形高度重建）。</summary>
+    private void UpdateTerrainCursor(int x, int y)
+    {
+        if (!terrainCursorValid || terrainCursorX != x || terrainCursorY != y)
+        {
+            terrainCursorValid = true;
+            terrainCursorX = x;
+            terrainCursorY = y;
+            terrainCursorHitCached = false;
+        }
+    }
+
+    /// <summary>
+    /// 在地形上画笔刷作用范围圈。位置取自鼠标射线与地形的交点，
+    /// 每段顶点的高度都从地形高度场采样，所以圈会贴合高低起伏。
+    /// 画在场景深度之后：会被山体正确遮挡，又不会盖住 gizmo。
+    /// </summary>
+    private void DrawTerrainBrushCursor()
+    {
+        if (!TerrainEditState.IsTerrainEditModeEnabled || !terrainCursorValid)
+        {
+            terrainBrushCursor?.Clear();
+            return;
+        }
+
+        try
+        {
+            if (!EnsureTerrainBrushCursor())
+                return;
+
+            TerrainEntity terrain = GetTerrainForCursor();
+            if (terrain?.Terrain?.TerrainData == null)
+            {
+                terrainBrushCursor.Clear();
+                return;
+            }
+
+            if (!TryGetTerrainCursorHit(terrain, out Vector3 worldHit))
+            {
+                terrainBrushCursor.Clear();
+                return;
+            }
+
+            terrainBrushCursor.Update(terrain, worldHit, camera.GetEyePt(), TerrainEditState.BrushRadius, TerrainEditState.BrushFeather);
+            terrainBrushCursor.Draw(Viewport.Context, camera.GetViewProjMatrix(), Viewport.DepthBufferDSV);
+        }
+        catch (Exception e)
+        {
+            // chunk 由流式加载在别的线程增删，这里兜底一次，不能因为光标把编辑器崩掉
+            terrainBrushCursor?.Clear();
+            LogTerrainCursorFailure(e);
+        }
+    }
+
+    private bool TryGetTerrainCursorHit(TerrainEntity terrain, out Vector3 worldHit)
+    {
+        worldHit = default;
+
+        // 拖动笔刷时地形高度一直在变，必须每帧重新求交；其余情况按「鼠标/摄像机是否变了」缓存
+        if (!terrainPainting && terrainCursorHitCached)
+        {
+            Matrix currentViewProj = camera.GetViewProjMatrix();
+            if (IsSameMatrix(currentViewProj, terrainCursorHitViewProj))
+            {
+                worldHit = terrainCursorHitWorld;
+                return true;
+            }
+        }
+
+        if (!TerrainBrush.TryHit(terrain, GetHitTestRay(terrainCursorX, terrainCursorY), out Vector3 _, out worldHit))
+        {
+            terrainCursorHitCached = false;
+            return false;
+        }
+
+        terrainCursorHitWorld = worldHit;
+        terrainCursorHitViewProj = camera.GetViewProjMatrix();
+        terrainCursorHitCached = true;
+        return true;
+    }
+
+    private static bool IsSameMatrix(Matrix a, Matrix b)
+    {
+        return a.M11 == b.M11 && a.M12 == b.M12 && a.M13 == b.M13 && a.M14 == b.M14
+            && a.M21 == b.M21 && a.M22 == b.M22 && a.M23 == b.M23 && a.M24 == b.M24
+            && a.M31 == b.M31 && a.M32 == b.M32 && a.M33 == b.M33 && a.M34 == b.M34
+            && a.M41 == b.M41 && a.M42 == b.M42 && a.M43 == b.M43 && a.M44 == b.M44;
+    }
+
+    private TerrainEntity GetTerrainForCursor()
+    {
+        if (terrainBrushCursorTerrain == null || terrainBrushCursorTerrain.Terrain?.TerrainData == null)
+            terrainBrushCursorTerrain = TerrainBrush.FindTerrain(this);
+
+        return terrainBrushCursorTerrain;
+    }
+
+    private bool EnsureTerrainBrushCursor()
+    {
+        if (terrainBrushCursor != null && !terrainBrushCursor.IsDisposed)
+            return true;
+
+        if (terrainBrushCursorUnavailable)
+            return false;
+
+        try
+        {
+            terrainBrushCursor = new TerrainBrushCursor(Viewport.Device);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Frosty.Core.App.Logger?.LogError($"[地形笔刷] 创建光标渲染器失败，将不显示笔刷圈：{e.Message}");
+            terrainBrushCursorUnavailable = true;
+            return false;
+        }
+    }
+
+    private bool terrainCursorFailureLogged;
+
+    private void LogTerrainCursorFailure(Exception e)
+    {
+        if (terrainCursorFailureLogged)
+            return;
+
+        terrainCursorFailureLogged = true;
+        Frosty.Core.App.Logger?.LogWarning($"[地形笔刷] 笔刷圈绘制失败（已隐藏光标）：{e.Message}");
     }
 
     private void CaptureGizmoDrag()
@@ -1409,6 +1574,9 @@ public class LevelEditorScreen : DeferredRenderScreen2
         Viewport.Context.PixelShader.SetSampler(0, D3DUtils.CreateSamplerState(D3D11.TextureAddressMode.Clamp, filter: D3D11.Filter.MinMagMipPoint));
 
         RenderMeshes(MeshRenderPath.Forward, sprites);
+
+        // 地形笔刷圈：同样画在场景深度上（只读深度 + alpha 混合），所以会被山体正确遮挡
+        DrawTerrainBrushCursor();
 
         // Foreground elements
         Viewport.Context.OutputMerger.SetRenderTargets(gizmoDepthTexture.DSV, rts);
